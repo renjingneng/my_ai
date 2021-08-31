@@ -17,3 +17,12 @@ root
 ├─ .gitignore
 └─ README.md
 ```   
+### 框架依赖
+``` 
+静态可视化-matplotlib
+数据操作-numpy,pandas 
+数学计算-SciPy
+传统机器学习-scikit-learn
+神经网络框架-pytorch,torchvision
+其他-torchinfo
+```
