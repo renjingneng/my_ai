@@ -1,6 +1,7 @@
 import torchinfo
 
-def show_network(net,input_size):
+
+def show_network(net, input_size):
     """
     show summary of network
     :param net:

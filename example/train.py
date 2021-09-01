@@ -1,6 +1,7 @@
 import torch
 
 import lib
+import utility
 
 
 def train_6(net, train_iter, test_iter, num_epochs, lr, device):
@@ -24,10 +25,10 @@ def train_6(net, train_iter, test_iter, num_epochs, lr, device):
     net.to(device)
     optimizer = torch.optim.SGD(net.parameters(), lr=lr)
     loss = torch.nn.CrossEntropyLoss()
-    timer, num_batches = lib.utility.Timer(), len(train_iter)
+    timer, num_batches = utility.Timer(), len(train_iter)
     for epoch in range(num_epochs):
         # Sum of training loss, sum of training accuracy, no. of examples
-        metric = lib.utility.Accumulator(3)
+        metric = utility.Accumulator(3)
         net.train()
         for i, (X, y) in enumerate(train_iter):
             timer.start()

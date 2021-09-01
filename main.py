@@ -1,8 +1,5 @@
-import example
-import lib
+import lib.model
 import torch
-from d2l import torch
-from torch import nn
 
 
 def run():
@@ -16,7 +13,9 @@ def run():
     #                     nn.Linear(120, 84), nn.Sigmoid(), nn.Linear(84, 10))
     # lib.show_cmd.show_network(net,(2,3,28,28))
     # train, test = lib.load.LoadDataset.load_fashion_mnist(256)
-    print('debug')
+    temp1 = torch.tensor([1, 1, 1])
+    temp2 = torch.tensor([1, 1, 0])
+    print(lib.model.accuracy(temp1, temp2))
 
 
 if __name__ == '__main__':
