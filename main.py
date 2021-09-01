@@ -1,6 +1,7 @@
 import example
 import lib
 import torch
+from d2l import torch
 from torch import nn
 
 
@@ -14,7 +15,8 @@ def run():
     #                     nn.Linear(16 * 5 * 5, 120), nn.Sigmoid(),
     #                     nn.Linear(120, 84), nn.Sigmoid(), nn.Linear(84, 10))
     # lib.show_cmd.show_network(net,(2,3,28,28))
-    print("load 还没有完成!")
+    # train, test = lib.load.LoadDataset.load_fashion_mnist(256)
+    print('debug')
 
 
 if __name__ == '__main__':
