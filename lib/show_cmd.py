@@ -1,4 +1,4 @@
-from torchinfo import summary
+import torchinfo
 
 def show_network(net,input_size):
     """
@@ -7,4 +7,4 @@ def show_network(net,input_size):
     :param input_size:
     :return:
     """
-    summary(net, input_size, verbose=2, col_names=["output_size", "num_params", "mult_adds"])
+    torchinfo.summary(net, input_size, verbose=2, col_names=["output_size", "num_params", "mult_adds"])

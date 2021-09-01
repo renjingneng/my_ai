@@ -1,14 +1,14 @@
 import torchvision
-from torchvision import transforms
-from torch.utils import data
+import torch
+import torch.utils.data
 
 
 class LoadDataset:
 
     @staticmethod
     def __transforms_before_load():
-        trans = [transforms.Pad(padding=1), transforms.ToTensor()]
-        trans = transforms.Compose(trans)
+        trans = [torchvision.transforms.Pad(padding=1), torchvision.transforms.ToTensor()]
+        trans = torchvision.transforms.Compose(trans)
         return trans
 
     @staticmethod
@@ -29,7 +29,7 @@ class LoadDataset:
                                                        train=False,
                                                        transform=trans,
                                                        download=True)
-        return (data.DataLoader(mnist_train, batch_size, shuffle=True,
-                                num_workers=4),
-                data.DataLoader(mnist_test, batch_size, shuffle=False,
-                                num_workers=4))
+        return (torch.utils.data.DataLoader(mnist_train, batch_size, shuffle=True,
+                                            num_workers=4),
+                torch.utils.data.DataLoader(mnist_test, batch_size, shuffle=False,
+                                            num_workers=4))

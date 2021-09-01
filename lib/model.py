@@ -1,5 +1,6 @@
 import torch
-from utility import Accumulator
+
+import utility
 
 
 def accuracy(y_hat, y):
@@ -16,7 +17,7 @@ def evaluate_accuracy(net, data_iter):
     net.eval()
     device = next(iter(net.parameters())).device
     # No. of correct predictions, no. of predictions
-    metric = Accumulator(2)
+    metric = utility.Accumulator(2)
 
     with torch.no_grad():
         for X, y in data_iter:
