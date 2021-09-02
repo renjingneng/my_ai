@@ -15,7 +15,7 @@ class Transforms:
                 [torchvision.transforms.Pad(padding=n)(self.__orig_img) for n in (40, 50, 60, 70)]
                 ]
         imgs[0].insert(0, self.__orig_img)
-        lib.show_plt.show_image_grid(imgs, titles)
+        lib.plt.show_image_grid(imgs, titles)
 
     def show_resize(self):
         titles = [['Original image', '3', '10', '30'],
@@ -24,4 +24,4 @@ class Transforms:
                 [torchvision.transforms.Resize(size=n)(self.__orig_img) for n in (40, 50, 60, 70)]
                 ]
         imgs[0].insert(0, self.__orig_img)
-        lib.show_plt.show_image_grid(imgs, titles)
+        lib.plt.show_image_grid(imgs, titles)

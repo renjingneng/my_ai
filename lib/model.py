@@ -1,7 +1,7 @@
 import torch
-import visdom
 
 import utility
+import lib
 
 
 def accuracy(y_hat, y):
@@ -10,7 +10,6 @@ def accuracy(y_hat, y):
         y_hat = y_hat.argmax(axis=1)
     cmp = y_hat.type(y.dtype) == y
     return float(cmp.type(y.dtype).sum())
-
 
 
 def init_weights(m):
@@ -37,11 +36,13 @@ def train_1(net, train_iter, test_iter, num_epochs, lr):
     optimizer = torch.optim.SGD(net.parameters(), lr=lr)
     loss = torch.nn.CrossEntropyLoss()
     timer, num_batches = utility.Timer(), len(train_iter)
-    vis = visdom.Visdom()
-    vis.close(win="lineset")
-    vis.line(X=[0], Y=[train_l], win="lineset", name="train_l", update='append')
-    vis.line(X=[0], Y=[train_acc], win="lineset", name="train_acc", update='append')
-    vis.line(X=[0], Y=[test_acc], win="lineset", name="test_acc", update='append')
+    # vis = visdom.Visdom()
+    # vis.close(win="lineset")
+    # vis.line(X=[0], Y=[train_l], win="lineset", name="train_l", update='append')
+    # vis.line(X=[0], Y=[train_acc], win="lineset", name="train_acc", update='append')
+    # vis.line(X=[0], Y=[test_acc], win="lineset", name="test_acc", update='append')
+    animator = lib.animator.AnimatorFactory.get_animator()
+    animator.line_start(num_batches)
     # step2
     for epoch in range(num_epochs):
         net.train()
@@ -60,8 +61,7 @@ def train_1(net, train_iter, test_iter, num_epochs, lr):
                 metric.add(l * X.shape[0], accuracy(y_hat, y), X.shape[0])
             train_l = metric[0] / metric[2]
             train_acc = metric[1] / metric[2]
-            vis.line(X=[epoch + (i + 1) / num_batches], Y=[train_l], win="lineset", name="train_l", update='append')
-            vis.line(X=[epoch + (i + 1) / num_batches], Y=[train_acc], win="lineset", name="train_acc", update='append')
+            animator.train_line_append(epoch, i, {"train_l": train_l, "train_acc": train_acc})
         # step2.3
         net.eval()
         with torch.no_grad():
@@ -70,4 +70,4 @@ def train_1(net, train_iter, test_iter, num_epochs, lr):
                 y = y.to(device)
                 metric_eval.add(accuracy(net(X), y), y.numel())
         test_acc = metric_eval[0] / metric_eval[1]
-        vis.line(X=[epoch + 1], Y=[test_acc], win="lineset", name="test_acc", update='append')
+        animator.test_line_append(epoch, {"test_acc": test_acc})
