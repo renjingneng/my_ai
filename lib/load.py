@@ -36,6 +36,6 @@ class LoadDataset:
                                                        transform=trans,
                                                        download=True)
         return (torch.utils.data.DataLoader(mnist_train, batch_size, shuffle=True,
-                                            num_workers=4),
+                                            num_workers=2),
                 torch.utils.data.DataLoader(mnist_test, batch_size, shuffle=False,
-                                            num_workers=4))
+                                            num_workers=2))

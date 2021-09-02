@@ -12,6 +12,23 @@ def accuracy(y_hat, y):
     return float(cmp.type(y.dtype).sum())
 
 
+def cnn_block(num_convs, in_channels, out_channels):
+    """
+    :param num_convs:
+    :param in_channels:
+    :param out_channels:
+    :return:
+    """
+    layers = []
+    for _ in range(num_convs):
+        layers.append(
+            torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
+        layers.append(torch.nn.ReLU())
+        in_channels = out_channels
+    layers.append(torch.nn.MaxPool2d(kernel_size=2, stride=2))
+    return torch.nn.Sequential(*layers)
+
+
 def init_weights(m):
     if type(m) == torch.nn.Linear or type(m) == torch.nn.Conv2d:
         torch.nn.init.xavier_uniform_(m.weight)

@@ -44,7 +44,7 @@ def run():
     #     vis.line(X=X1,Y=Y2,win="lineset",name="line2",update='append')
     #     vis.line(X=X1,Y=Y3,win="lineset",name="line3",update='append')
     # print('debug')
-    example.model.improved_leNet()
+    example.model.Vgg11.implementation()
     # print(resize(torch.ones(1,3,5,5),(4,4)))
 
 
