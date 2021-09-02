@@ -4,16 +4,22 @@ import torch.utils.data
 
 
 class LoadDataset:
+    trans = None
 
-    @staticmethod
-    def __transforms_before_load():
-        trans = [torchvision.transforms.Pad(padding=1), torchvision.transforms.ToTensor()]
-        trans = torchvision.transforms.Compose(trans)
-        return trans
+    @classmethod
+    def transforms_before_load(cls, resize=None):
+        cls.trans = [torchvision.transforms.ToTensor()]
+        if resize:
+            cls.trans.insert(0, torchvision.transforms.Resize(resize))
+        cls.trans = torchvision.transforms.Compose(cls.trans)
+        return cls.trans
 
-    @staticmethod
-    def load_fashion_mnist(batch_size: int):
-        trans = LoadDataset.__transforms_before_load()
+    @classmethod
+    def load_fashion_mnist(cls, batch_size: int):
+        if not cls.trans:
+            trans = cls.transforms_before_load()
+        else:
+            trans = cls.trans
         """
         Download the Fashion-MNIST dataset and then load it into memory.
         Original dataset uri:https://github.com/zalandoresearch/fashion-mnist/tree/master/data/fashion

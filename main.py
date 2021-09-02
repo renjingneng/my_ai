@@ -5,6 +5,8 @@ import visdom
 import numpy as np
 import time
 import numpy
+from d2l import torch as d2l
+from torchvision.transforms.functional import resize
 
 
 def run():
@@ -41,8 +43,9 @@ def run():
     #     vis.line(X=X1,Y=Y1,win="lineset",name="line1",update='append')
     #     vis.line(X=X1,Y=Y2,win="lineset",name="line2",update='append')
     #     vis.line(X=X1,Y=Y3,win="lineset",name="line3",update='append')
-    #print('debug')
-    example.model.softmax_regression()
+    # print('debug')
+    example.model.improved_leNet()
+    # print(resize(torch.ones(1,3,5,5),(4,4)))
 
 
 if __name__ == '__main__':
