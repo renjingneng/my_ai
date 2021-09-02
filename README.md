@@ -43,4 +43,6 @@ package内部的文件不存在相互引用，如有必要则放在__init__.py�
 - [X] visdom展示训练过程
 - [ ] 训练过程中可以保存
 - [X] 训练都是在gpu中进行
-- [ ] LeNet改良版
+- [X] LeNet改良版
+- [ ] RNN
+- [ ] transformer
