@@ -2,13 +2,14 @@
 ```text
 root                           
 ├─ example    // 示例                
-│  └─ train.py    // pytorch的train示例                        
+│  └─ model.py    // 经典神经网络示例                     
 │  └─ transform.py    // pytorch的transform示例                        
 ├─ lib    // 类库     
+│  └─ animator.py  // 动态展示数据，工厂设计模式                         
 │  └─ load.py  // 加载标准dataset                          
 │  └─ model.py  // 模型用的                         
-│  └─ show_cmd.py  // 命令行展示数据                          
-│  └─ show_plt.py  // 图表展示数据  
+│  └─ summary.py  // 命令行展示总结                        
+│  └─ plt.py  // matplotlib展示 
 ├─ resource  // 数据资源     
 │  └─ dataset  // dataset数据资源     
 │  │  ├─ img  //图片             
