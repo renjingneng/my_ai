@@ -1,4 +1,4 @@
-import example.cnn_model
+import example.cnn
 import lib.model
 import torch
 import visdom
@@ -6,8 +6,11 @@ import numpy as np
 import time
 import numpy
 from torch import nn
+from lib import nlp_en
 from d2l import torch as d2l
 from torchvision.transforms.functional import resize
+import nltk
+from nltk.stem import WordNetLemmatizer
 
 
 def run():
@@ -45,8 +48,15 @@ def run():
     #     vis.line(X=X1,Y=Y2,win="lineset",name="line2",update='append')
     #     vis.line(X=X1,Y=Y3,win="lineset",name="line3",update='append')
     # print('debug')
-    example.cnn_model.googLeNet()
+    # example.cnn.googLeNet()
     # print(resize(torch.ones(1,3,5,5),(4,4)))
+
+    vau = nlp_en.Treasure(token_type='char').get_vocab()
+
+    #print(t.get_tokens())
+    # tokens = nlp_en.tokenize(lines)
+    # vocab = nlp_en.count_corpus(tokens)
+    # print(list(vocab.token_to_idx.items())[:10])
 
 
 if __name__ == '__main__':

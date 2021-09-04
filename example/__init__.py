@@ -1,2 +1,2 @@
 from . import transform
-from . import cnn_model
+from . import cnn
