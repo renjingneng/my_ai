@@ -1,2 +1,3 @@
-from . import transform
-from . import cnn
+from . import dl
+from . import nlp
+from . import other

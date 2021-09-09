@@ -1,62 +1,60 @@
-import example.cnn
-import lib.model
-import torch
-import visdom
-import numpy as np
-import time
-import numpy
-from torch import nn
-from lib import nlp_en
-from d2l import torch as d2l
-from torchvision.transforms.functional import resize
-import nltk
-from nltk.stem import WordNetLemmatizer
+from gensim import corpora, models, similarities, downloader
+import pprint
+from collections import defaultdict
+import logging
+
 
 
 def run():
-    # example1 = example.transform.Transforms()
-    # example1.show_resize()
+    logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
+    text_corpus = [
+        "Human machine interface for lab abc computer applications",
+        "A survey of user opinion of computer system response time",
+        "The EPS user interface management system",
+        "System and human system engineering testing of EPS",
+        "Relation of user perceived response time to error measurement",
+        "The generation of random binary unordered trees",
+        "The intersection graph of paths in trees",
+        "Graph minors IV Widths of trees and well quasi ordering",
+        "Graph minors A survey",
+    ]
+    # Create a set of frequent words
+    stoplist = set('for a of the and to in'.split(' '))
+    # Lowercase each document, split it by white space and filter out stopwords
+    texts = [[word for word in document.lower().split() if word not in stoplist]
+             for document in text_corpus]
 
-    # net = nn.Sequential(nn.Conv2d(3, 6, kernel_size=5, padding=2), nn.Sigmoid(),
-    #                     nn.AvgPool2d(kernel_size=2, stride=2),
-    #                     nn.Conv2d(6, 16, kernel_size=5), nn.Sigmoid(),
-    #                     nn.AvgPool2d(kernel_size=2, stride=2), nn.Flatten(),
-    #                     nn.Linear(16 * 5 * 5, 120), nn.Sigmoid(),
-    #                     nn.Linear(120, 84), nn.Sigmoid(), nn.Linear(84, 10))
-    # lib.show_cmd.show_network(net,(2,3,28,28))
+    # Count word frequencies
 
-    # train, test = lib.load.LoadDataset.load_fashion_mnist(256)
+    frequency = defaultdict(int)
+    for text in texts:
+        for token in text:
+            frequency[token] += 1
 
-    # temp1 = torch.tensor([1, 1, 1])
-    # temp2 = torch.tensor([1, 1, 0])
-    # print(lib.model.accuracy(temp1, temp2))
+    # Only keep words that appear more than once
+    processed_corpus = [[token for token in text if frequency[token] > 1] for text in texts]
+    # pprint.pprint(texts)
+    # pprint.pprint(processed_corpus)
 
-    # vis = visdom.Visdom()
-    # vis.close("lineset")
-    # X1=[0]
-    # Y1=[0]
-    # Y2=[4]
-    # Y3=[6]
-    # vis.line(X=X1,Y=Y1,win="lineset",name="line1",update='append')
-    # vis.line(X=X1,Y=Y2,win="lineset",name="line2",update='append')
-    # vis.line(X=X1,Y=Y3,win="lineset",name="line3",update='append')
-    # for i in range(10):
-    #     time.sleep(1)
-    #     X1 = [i+1]
-    #     Y1 = [i+1]
-    #     vis.line(X=X1,Y=Y1,win="lineset",name="line1",update='append')
-    #     vis.line(X=X1,Y=Y2,win="lineset",name="line2",update='append')
-    #     vis.line(X=X1,Y=Y3,win="lineset",name="line3",update='append')
-    # print('debug')
-    # example.cnn.googLeNet()
-    # print(resize(torch.ones(1,3,5,5),(4,4)))
+    dictionary = corpora.Dictionary(processed_corpus)
+    pprint.pprint(dictionary.token2id)
 
-    vau = nlp_en.Treasure(token_type='char').get_vocab()
+    bow_corpus = [dictionary.doc2bow(text) for text in processed_corpus]
+    pprint.pprint(bow_corpus)
 
-    #print(t.get_tokens())
-    # tokens = nlp_en.tokenize(lines)
-    # vocab = nlp_en.count_corpus(tokens)
-    # print(list(vocab.token_to_idx.items())[:10])
+    tfidf = models.TfidfModel(bow_corpus)
+
+    # transform the "system minors" string
+    # words = "system response".lower().split()
+    # print(tfidf[dictionary.doc2bow(words)])
+
+    index = similarities.SparseMatrixSimilarity(tfidf[bow_corpus], num_features=12)
+
+    query_document = 'human computer'.split()
+    query_bow = dictionary.doc2bow(query_document)
+    sims = index[tfidf[query_bow]]
+    for document_number, score in sorted(enumerate(sims), key=lambda x: x[1], reverse=True):
+        print(document_number, score)
 
 
 if __name__ == '__main__':
