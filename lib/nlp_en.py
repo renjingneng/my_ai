@@ -2,6 +2,48 @@ import collections
 import re
 import requests
 import os
+import torch
+
+
+class WordEmbedding:
+    """
+    tips:
+    For padding, fill a zero vector embedding .
+
+    For words that don't have a pre-trained embedding, you should fill them with random values when initializing,
+    but set them to trainable.
+    """
+
+    def __init__(self, embedding_name='glove.6B.50d'):
+        self.__data_path = self.__get_data_path(embedding_name)
+        self.__word_to_vec = {"<zero>": None}
+        self.__embedding_len = None
+
+        with open(self.__data_path, 'r') as f:
+            elems = f.readline().strip().split()
+            self.__embedding_len = len(elems[1:])
+            self.__word_to_vec["<zero>"] = [0.] * self.__embedding_len
+
+        with open(self.__data_path, 'r') as f:
+            for line in f:
+                elems = line.strip().split()
+                self.__word_to_vec[elems[0]] = [float(elem) for elem in elems[1:]]
+
+    def __get_data_path(self, embedding_name):
+        if embedding_name == "glove.6B.50d":
+            return "resource/word_vector/glove_en/glove.6B/glove.6B.50d.txt"
+
+    def __getitem__(self, words):
+        if isinstance(words, list):
+            vecs = [
+                self.__word_to_vec.get(word, self.__word_to_vec["<zero>"])
+                for word in words]
+            return vecs
+        else:
+            return self.__word_to_vec.get(words, self.__word_to_vec["<zero>"])
+
+    def __len__(self):
+        return len(self.__word_to_vec)
 
 
 class Vocab:
@@ -93,5 +135,50 @@ class Treasure:
                 token = self.__token_preprocess(token)
                 if len(token) == 0 and self.token_type == "word":
                     continue
+                res.append(token)
+        return res
+
+
+class DataSetClassification:
+    def __init__(self, source="aclImdb"):
+        self.__source = source
+        self.__data_path = self.__get_data_path()
+        self.__train_data = self.__read_data(self.__data_path, True)
+        self.__test_data = self.__read_data(self.__data_path, False)
+
+    def __get_data_path(self):
+        if self.__source == "aclImdb":
+            return f"resource/dataset/text/aclImdb"
+
+    def __read_data(self, data_dir, is_train):
+        data, labels = [], []
+        data_folder = os.path.join(data_dir, 'train' if is_train else 'test')
+        for index, label in enumerate(os.listdir(data_folder)):
+            label_folder = os.path.join(data_folder,
+                                        label)
+            for file in os.listdir(label_folder):
+                with open(os.path.join(label_folder, file), 'rb') as f:
+                    line = self.__line_preprocess(f.read().decode('utf-8'))
+                    data.append(self.__tokenize(line))
+                    labels.append(index)
+        return data, labels
+
+    def __line_preprocess(self, line):
+        if self.__source == "aclImdb":
+            line = re.sub('[^A-Za-z]+', ' ', line).strip().replace('\n', '').lower()
+        return line
+
+    def __token_preprocess(self, token):
+        if self.__source == "aclImdb":
+            if len(token) == 1 and token != "a":
+                token = None
+        return token
+
+    def __tokenize(self, line):
+        tokens = line.split()
+        res = []
+        for token in tokens:
+            token = self.__token_preprocess(token)
+            if token:
                 res.append(token)
         return res

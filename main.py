@@ -1,60 +1,93 @@
-from gensim import corpora, models, similarities, downloader
-import pprint
-from collections import defaultdict
-import logging
+import os
+import torch
+from torch import nn
+from d2l import torch as d2l
 
+class BiRNN(nn.Module):
+    def __init__(self, vocab_size, embed_size, num_hiddens, num_layers,
+                 **kwargs):
+        super(BiRNN, self).__init__(**kwargs)
+        self.embedding = nn.Embedding(vocab_size, embed_size)
+        # Set `bidirectional` to True to get a bidirectional RNN
+        self.encoder = nn.LSTM(embed_size, num_hiddens, num_layers=num_layers,
+                               bidirectional=True)
+        self.decoder = nn.Linear(4 * num_hiddens, 2)
 
+    def forward(self, inputs):
+        # The shape of `inputs` is (batch size, no. of time steps). Because
+        # LSTM requires its input's first dimension to be the temporal
+        # dimension, the input is transposed before obtaining token
+        # representations. The output shape is (no. of time steps, batch size,
+        # word vector dimension)
+        embeddings = self.embedding(inputs.T)
+        self.encoder.flatten_parameters()
+        # Returns hidden states of the last hidden layer at different time
+        # steps. The shape of `outputs` is (no. of time steps, batch size,
+        # 2 * no. of hidden units)
+        outputs, _ = self.encoder(embeddings)
+        # Concatenate the hidden states of the initial time step and final
+        # time step to use as the input of the fully connected layer. Its
+        # shape is (batch size, 4 * no. of hidden units)
+        encoding = torch.cat((outputs[0], outputs[-1]), dim=1)
+        # Concatenate the hidden states at the initial and final time steps as
+        # the input of the fully-connected layer. Its shape is (batch size,
+        # 4 * no. of hidden units)
+        outs = self.decoder(encoding)
+        return outs
+
+def read_imdb(data_dir, is_train):
+    """Read the IMDb review dataset text sequences and labels."""
+    data, labels = [], []
+    for label in ('pos', 'neg'):
+        folder_name = os.path.join(data_dir, 'train' if is_train else 'test',
+                                   label)
+        for file in os.listdir(folder_name):
+            with open(os.path.join(folder_name, file), 'rb') as f:
+                #review = f.read().decode('utf-8').replace('\n', '')
+                data.append(f.read().decode('utf-8'))
+                labels.append(1 if label == 'pos' else 0)
+    return data, labels
+
+def load_data_imdb(batch_size, num_steps=500):
+    data_dir = 'resource/dataset/text/aclImdb'
+    train_data = read_imdb(data_dir, True)
+    test_data = read_imdb(data_dir, False)
+    train_tokens = d2l.tokenize(train_data[0], token='word')
+    test_tokens = d2l.tokenize(test_data[0], token='word')
+    vocab = d2l.Vocab(train_tokens, min_freq=5)
+    train_features = torch.tensor([
+        d2l.truncate_pad(vocab[line], num_steps, vocab['<pad>'])
+        for line in train_tokens])
+    test_features = torch.tensor([
+        d2l.truncate_pad(vocab[line], num_steps, vocab['<pad>'])
+        for line in test_tokens])
+    train_iter = d2l.load_array((train_features, torch.tensor(train_data[1])),
+                                batch_size)
+    test_iter = d2l.load_array((test_features, torch.tensor(test_data[1])),
+                               batch_size, is_train=False)
+    return train_iter, test_iter, vocab
 
 def run():
-    logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
-    text_corpus = [
-        "Human machine interface for lab abc computer applications",
-        "A survey of user opinion of computer system response time",
-        "The EPS user interface management system",
-        "System and human system engineering testing of EPS",
-        "Relation of user perceived response time to error measurement",
-        "The generation of random binary unordered trees",
-        "The intersection graph of paths in trees",
-        "Graph minors IV Widths of trees and well quasi ordering",
-        "Graph minors A survey",
-    ]
-    # Create a set of frequent words
-    stoplist = set('for a of the and to in'.split(' '))
-    # Lowercase each document, split it by white space and filter out stopwords
-    texts = [[word for word in document.lower().split() if word not in stoplist]
-             for document in text_corpus]
+    batch_size = 64
+    train_iter, test_iter, vocab = d2l.load_data_imdb(batch_size)
 
-    # Count word frequencies
+    embed_size, num_hiddens, num_layers, devices = 100, 100, 2, d2l.try_all_gpus()
+    net = BiRNN(len(vocab), embed_size, num_hiddens, num_layers)
 
-    frequency = defaultdict(int)
-    for text in texts:
-        for token in text:
-            frequency[token] += 1
+    def init_weights(m):
+        if type(m) == nn.Linear:
+            nn.init.xavier_uniform_(m.weight)
+        if type(m) == nn.LSTM:
+            for param in m._flat_weights_names:
+                if "weight" in param:
+                    nn.init.xavier_uniform_(m._parameters[param])
 
-    # Only keep words that appear more than once
-    processed_corpus = [[token for token in text if frequency[token] > 1] for text in texts]
-    # pprint.pprint(texts)
-    # pprint.pprint(processed_corpus)
+    net.apply(init_weights);
 
-    dictionary = corpora.Dictionary(processed_corpus)
-    pprint.pprint(dictionary.token2id)
+    glove_embedding = d2l.TokenEmbedding('glove.6b.100d')
 
-    bow_corpus = [dictionary.doc2bow(text) for text in processed_corpus]
-    pprint.pprint(bow_corpus)
-
-    tfidf = models.TfidfModel(bow_corpus)
-
-    # transform the "system minors" string
-    # words = "system response".lower().split()
-    # print(tfidf[dictionary.doc2bow(words)])
-
-    index = similarities.SparseMatrixSimilarity(tfidf[bow_corpus], num_features=12)
-
-    query_document = 'human computer'.split()
-    query_bow = dictionary.doc2bow(query_document)
-    sims = index[tfidf[query_bow]]
-    for document_number, score in sorted(enumerate(sims), key=lambda x: x[1], reverse=True):
-        print(document_number, score)
+    embeds = glove_embedding[vocab.idx_to_token]
+    embeds.shape
 
 
 if __name__ == '__main__':
