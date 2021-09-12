@@ -11,4 +11,6 @@
 .idea/
 .__pycache__/
 resource/dataset/
-#resource/model/
+resource/word_vector/
+resource/model/
+resource/compressed/
