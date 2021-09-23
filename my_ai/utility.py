@@ -1,4 +1,5 @@
 import time
+import json
 from abc import ABC, abstractmethod
 
 import torch
@@ -8,7 +9,7 @@ import matplotlib.pyplot
 import visdom
 
 
-
+# region Animator
 class Animator(ABC):
     @abstractmethod
     def line_start(self, num_batches): pass
@@ -69,6 +70,10 @@ class AnimatorFactory:
         if animator_type == "visdom":
             return AnimatorVisdom()
 
+
+# endregion
+
+# region Metrics
 class Accumulator:
     """For accumulating sums over `n` variables."""
 
@@ -114,6 +119,14 @@ class Timer:
         return numpy.array(self.times).cumsum().tolist()
 
 
+def accuracy(y_hat, y):
+    """Compute the number of correct predictions."""
+    if len(y_hat.shape) > 1:
+        y_hat = y_hat.argmax(axis=1)
+    cmp = y_hat.type(y.dtype) == y
+    return float(cmp.type(y.dtype).sum())
+
+
 def summary_of_network(net, input_size):
     """
     show summary of network
@@ -123,46 +136,10 @@ def summary_of_network(net, input_size):
     """
     torchinfo.summary(net, input_size, verbose=2, col_names=["output_size", "num_params", "mult_adds"])
 
-def show_image_grid(imgs, titles):
-    num_rows = len(imgs)
-    num_cols = len(imgs[0])
-    fig, axs = matplotlib.pyplot.subplots(nrows=num_rows, ncols=num_cols, squeeze=False)
-    for row_idx, row in enumerate(imgs):
-        for col_idx, img in enumerate(row):
-            ax = axs[row_idx, col_idx]
-            ax.imshow(numpy.asarray(img))
-            ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
-            axs[row_idx, col_idx].set(title=titles[row_idx][col_idx])
-            axs[row_idx, col_idx].title.set_size(8)
-    matplotlib.pyplot.tight_layout()
-    matplotlib.pyplot.show()
 
+# endregion
 
-def accuracy(y_hat, y):
-    """Compute the number of correct predictions."""
-    if len(y_hat.shape) > 1:
-        y_hat = y_hat.argmax(axis=1)
-    cmp = y_hat.type(y.dtype) == y
-    return float(cmp.type(y.dtype).sum())
-
-
-def cnn_block(num_convs, in_channels, out_channels):
-    """
-    :param num_convs:
-    :param in_channels:
-    :param out_channels:
-    :return:
-    """
-    layers = []
-    for _ in range(num_convs):
-        layers.append(
-            torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
-        layers.append(torch.nn.ReLU())
-        in_channels = out_channels
-    layers.append(torch.nn.MaxPool2d(kernel_size=2, stride=2))
-    return torch.nn.Sequential(*layers)
-
-
+# region Train
 def init_weights(m):
     if type(m) == torch.nn.Linear or type(m) == torch.nn.Conv2d:
         torch.nn.init.xavier_uniform_(m.weight)
@@ -223,3 +200,51 @@ def train_1(net, train_iter, test_iter, num_epochs, lr):
         test_acc = metric_eval[0] / metric_eval[1]
         animator.test_line_append(epoch, {"test_acc": test_acc})
 
+
+# endregion
+
+# region Other
+def show_image_grid(imgs, titles):
+    num_rows = len(imgs)
+    num_cols = len(imgs[0])
+    fig, axs = matplotlib.pyplot.subplots(nrows=num_rows, ncols=num_cols, squeeze=False)
+    for row_idx, row in enumerate(imgs):
+        for col_idx, img in enumerate(row):
+            ax = axs[row_idx, col_idx]
+            ax.imshow(numpy.asarray(img))
+            ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
+            axs[row_idx, col_idx].set(title=titles[row_idx][col_idx])
+            axs[row_idx, col_idx].title.set_size(8)
+    matplotlib.pyplot.tight_layout()
+    matplotlib.pyplot.show()
+
+
+def save_json_file(obj, file_path):
+    with open(file_path, "w", encoding="utf8") as f:
+        f.write(json.dumps(obj, ensure_ascii=False))
+
+
+def load_json_file(file_path):
+    with open(file_path, encoding="utf8") as f:
+        return json.load(f)
+
+
+# endregion
+
+# region NNBlock
+def cnn_block(num_convs, in_channels, out_channels):
+    """
+    :param num_convs:
+    :param in_channels:
+    :param out_channels:
+    :return:
+    """
+    layers = []
+    for _ in range(num_convs):
+        layers.append(
+            torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
+        layers.append(torch.nn.ReLU())
+        in_channels = out_channels
+    layers.append(torch.nn.MaxPool2d(kernel_size=2, stride=2))
+    return torch.nn.Sequential(*layers)
+# endregion
