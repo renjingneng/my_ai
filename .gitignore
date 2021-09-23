@@ -10,7 +10,3 @@
 .git/
 .idea/
 .__pycache__/
-resource/dataset/
-resource/word_vector/
-resource/model/
-resource/compressed/
