@@ -9,4 +9,5 @@
 
 .git/
 .idea/
-.__pycache__/
+__pycache__/
+example/__pycache__/
