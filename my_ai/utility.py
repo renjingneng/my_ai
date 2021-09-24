@@ -73,6 +73,17 @@ class AnimatorFactory:
 
 # endregion
 
+# region Calculation
+def log_sum_exp(x):
+    """calculate log(sum(exp(x))) = max(x) + log(sum(exp(x - max(x))))
+    https://mc-stan.org/docs/2_27/stan-users-guide/log-sum-of-exponentials.html
+    """
+    max_score = x.max(-1)[0]
+    return max_score + (x - max_score.unsqueeze(-1)).exp().sum(-1).log()
+
+
+# endregion
+
 # region Metrics
 class Accumulator:
     """For accumulating sums over `n` variables."""
@@ -137,6 +148,24 @@ def summary_of_network(net, input_size):
     torchinfo.summary(net, input_size, verbose=2, col_names=["output_size", "num_params", "mult_adds"])
 
 
+# endregion
+
+# region NNBlock
+def cnn_block(num_convs, in_channels, out_channels):
+    """
+    :param num_convs:
+    :param in_channels:
+    :param out_channels:
+    :return:
+    """
+    layers = []
+    for _ in range(num_convs):
+        layers.append(
+            torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
+        layers.append(torch.nn.ReLU())
+        in_channels = out_channels
+    layers.append(torch.nn.MaxPool2d(kernel_size=2, stride=2))
+    return torch.nn.Sequential(*layers)
 # endregion
 
 # region Train
@@ -229,22 +258,4 @@ def load_json_file(file_path):
         return json.load(f)
 
 
-# endregion
-
-# region NNBlock
-def cnn_block(num_convs, in_channels, out_channels):
-    """
-    :param num_convs:
-    :param in_channels:
-    :param out_channels:
-    :return:
-    """
-    layers = []
-    for _ in range(num_convs):
-        layers.append(
-            torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
-        layers.append(torch.nn.ReLU())
-        in_channels = out_channels
-    layers.append(torch.nn.MaxPool2d(kernel_size=2, stride=2))
-    return torch.nn.Sequential(*layers)
 # endregion
