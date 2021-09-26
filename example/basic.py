@@ -52,8 +52,24 @@ def test4():
     A.clone().detach()
 
 
+# max、index_select 、masked_select、gather、nonzero
+def test5():
+    # max
+    A = torch.rand(2, 3,6,9)
+    print(A.max(0)[0].shape)
+    print(A.max(0)[1].shape)
+    # gather : Gathers values along an axis specified by dim.
+    t = torch.tensor(
+        [[1, 2]
+            , [3, 4]])
+    result = torch.gather(t, 0, torch.tensor(
+        [[0, 0]
+            , [1, 0]]))
+    print(result)
+
+
 def run():
-    test4()
+    test5()
 
 
 if __name__ == '__main__':
