@@ -34,8 +34,6 @@ def viterbi(obs, states, start_p, trans_p, emit_p):
         V[0][y] = start_p[y] * emit_p[y][obs[0]]
         path[y] = [y]
 
-
-
     # Run Viterbi for t > 0
     for t in range(1, len(obs)):
         V.append({})
@@ -45,7 +43,6 @@ def viterbi(obs, states, start_p, trans_p, emit_p):
             (prob, state) = max((V[t - 1][y0] * trans_p[y0][y] * emit_p[y][obs[t]], y0) for y0 in states)
             V[t][y] = prob
             newpath[y] = path[state] + [y]
-
 
         # Don't need to remember the old paths
         path = newpath
@@ -64,10 +61,9 @@ def example():
                    emission_probability)
 
 
-
-
 def run():
     print(example())
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     run()
