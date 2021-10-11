@@ -87,6 +87,9 @@ class TextClassifyPreprocessor:
     def build_dataset(config):
         return '222'
 
+    def preprocess(data):
+        return '222'
+
 
 # endregion
 

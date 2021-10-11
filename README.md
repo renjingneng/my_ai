@@ -1,3 +1,6 @@
+### 架构
+1. train pipeline：input->config->(preprocessor->dataset+model)->trainer->start
+2. predict pipeline： input->config->(preprocessor+model)->predict
 ### 代码风格
 1. 代码以及注释全英文，主要是为了学习英文
 2. my_ai里面引入module都是import package/module方式(除了__init__.py文件)，避免污染命名空间
