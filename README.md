@@ -1,14 +1,16 @@
 ### 代码风格
 1. 代码以及注释全英文，主要是为了学习英文
-2. 引入本地的module都是import package/module方式(除了__init__.py文件)，避免污染命名空间
+2. my_ai里面引入module都是import package/module方式(除了__init__.py文件)，避免污染命名空间
 3. 类大写，变量名和方法下划线方式
 4. 文件夹名字、文件名用下滑线方式，不用英文单词复数
-5. package内部的文件不存在相互引用，如有必要则放在__init__.py文件里面
-### 计划
-- [X] 框架基本结构
-- [X] visdom展示训练过程
-- [ ] 训练过程中可以保存
-- [X] 训练都是在gpu中进行
-- [X] LeNet改良版
-- [ ] RNN
-- [ ] transformer
+### model计划
+#### 文字类
+- [ ] textCNN
+- [ ] TextRNN
+- [ ] BiLSTM+Attention
+- [ ] TextRCNN
+- [ ] bi-lstm-crf
+- [ ] Transformer
+- [ ] bert
+#### 图片
+- [ ] alexNet
