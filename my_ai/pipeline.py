@@ -1,65 +1,96 @@
-import time
-import json
-from abc import ABC, abstractmethod
-
 import torch
 import numpy as np
-import torchinfo
-import matplotlib.pyplot
-import visdom
 
 
 # region Config
 class ConfigFactory:
     @staticmethod
-    def get_config(model_name, files_path='files', common_hyperparams=None, other_hyperparams=None):
+    def get_config(model_name, files_path='files', params=None, other_params=None):
         if model_name is None:
-            raise Exception("model_name is None")
+            raise Exception("model_name is None!")
 
         if model_name == "TextCNN":
-            if common_hyperparams is None: common_hyperparams = ConfigFactory.get_text_classify_common_hyperparams()
-            if other_hyperparams is None: other_hyperparams = {
-                'dd': 'fff'
+            default_params = ConfigFactory.get_text_classify_params(model_name, files_path)
+            default_other_params = {
+                'filter_sizes': (2, 3, 4),
+                'total_filters': 256
             }
-            return TextClassifyConfig(files_path, common_hyperparams, other_hyperparams)
+            params, other_params = ConfigFactory.fill_params(params, other_params, default_params, default_other_params)
+            return TextClassifyConfig(params, other_params)
+        else:
+            raise Exception("unrecognized model_name!")
 
     @staticmethod
-    def get_text_classify_common_hyperparams():
-        common_hyperparams = {
-            'epochs': 5,
+    def fill_params(params, other_params, default_params, default_other_params):
+        if params is None:
+            params = default_params
+        else:
+            for key in default_params:
+                if params.get(key) is None:
+                    params[key] = default_params[key]
+
+        if other_params is None:
+            other_params = default_other_params
+        else:
+            for key in default_other_params:
+                if other_params.get(key) is None:
+                    other_params[key] = default_other_params[key]
+        return params, other_params
+
+    @staticmethod
+    def get_text_classify_params(model_name, files_path):
+        params = {
+            'model_name': model_name,
+            'files_path': files_path,
+            'device': torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
+            'is_char_segment': 1,
+            'is_pretrained': 1,
+            'embedding_length': 300,
+            'dropout': 0.5,
+            'total_epochs': 20,
+            'batch_size': 128,
             'text_length': 30,
-            'learning_rate': 0.005,
+            'learning_rate': 1e-3,
+            'start_expire_after': 1,  # after how many epochs begin counting expire
+            'expire_batches': 1000,  # early drop after {expire_batches} batches without improvement
         }
-        return common_hyperparams
+        return params
 
 
 class TextClassifyConfig:
     def __init__(self, params, other_params):
-        # files_path
-        self.train_path = files_path + '/data/train.txt'
-        self.validate_path = files_path + '/data/validate.txt'
-        self.test_path = files_path + '/data/test.txt'
+        # file path
+        self.train_path = params['files_path'] + '/train.txt'
+        self.dev_path = params['files_path'] + '/dev.txt'
+        self.test_path = params['files_path'] + '/test.txt'
+        self.vocab_path = params['files_path'] + '/vocab.pkl'
+        self.save_path = params['files_path'] + '/saved_dict.ckpt'
+        self.log_path = params['files_path'] + '/log'
+
+        # basic info
+        self.model_name = params['model_name']
+        self.device = params['device']
+        self.is_char_segment = params['is_char_segment']
+        self.is_pretrained = params['is_pretrained']
+        self.embedding_length = params['embedding_length']
+        self.dropout = params['dropout']
+        self.total_epochs = params['total_epochs']
+        self.batch_size = params['batch_size']
+        self.text_length = params['text_length']
+        self.learning_rate = params['learning_rate']
+        self.start_expire_after = params['start_expire_after']
+        self.expire_batches = params['expire_batches']
+
+
         self.class_list = [x.strip() for x in open(
-            files_path + '/data/class.txt', encoding='utf-8').readlines()]
-        self.vocab_path = files_path + '/data/vocab.pkl'
-        self.save_path = files_path + '/saved_dict/' + self.model_name + '.ckpt'  # 模型训练结果
-        self.log_path = files_path + '/log/' + self.model_name
-        self.embedding_pretrained = torch.tensor(
-            np.load(files_path + '/data/' + common_hyperparams['embedding'])["embeddings"].astype('float32')) \
-            if common_hyperparams['embedding'] != 'random' else None
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # 设备
-        # model common
-        self.dropout = common_hyperparams['dropout']
-        self.require_improvement = common_hyperparams['require_improvement']
-        self.num_classes = len(self.class_list)  # 类别数
-        self.n_vocab = 0
-        self.epochs = common_hyperparams['epochs']
-        self.batch_size = common_hyperparams['batch_size']
-        self.text_length = common_hyperparams['text_length']
-        self.learning_rate = common_hyperparams['learning_rate']
-        self.embed = self.embedding_pretrained.size(1) \
-            if self.embedding_pretrained is not None else 300  # 字向量维度
-        # model specific
+            params['files_path'] + '/class.txt', encoding='utf-8').readlines()]
+        self.embedding = torch.tensor(
+            np.load(params['files_path'] + '/embedding.npz')["embeddings"].astype('float32')) \
+            if params['is_pretrained'] == 1 else None
+        self.num_classes = len(self.class_list)
+
+
+        # other_params
         self.other_params = other_params
 
 
