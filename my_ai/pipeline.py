@@ -81,14 +81,12 @@ class TextClassifyConfig:
         self.start_expire_after = params['start_expire_after']
         self.expire_batches = params['expire_batches']
 
-
         self.class_list = [x.strip() for x in open(
             params['files_path'] + '/class.txt', encoding='utf-8').readlines()]
         self.embedding = torch.tensor(
             np.load(params['files_path'] + '/embedding.npz')["embeddings"].astype('float32')) \
             if params['is_pretrained'] == 1 else None
         self.num_classes = len(self.class_list)
-
 
         # other_params
         self.other_params = other_params

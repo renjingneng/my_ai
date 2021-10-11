@@ -1,9 +1,13 @@
 import sys
 import os
 
+import numpy as np
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import my_ai
 
+def test():
+    temp = np.load('data/text_classify/embedding.npz')
 
 def train_textCNN():
     conf = my_ai.pipeline.ConfigFactory.get_config('TextCNN','data/text_classify')
@@ -16,7 +20,7 @@ def train_textCNN():
 def predict_textCNN():pass
 
 def run():
-    train_textCNN()
+    test()
 
 
 if __name__ == '__main__':
