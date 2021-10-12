@@ -1,5 +1,8 @@
+import os
+
 import torch
 import numpy as np
+import pickle as pkl
 
 
 # region Config
@@ -16,9 +19,10 @@ class ConfigFactory:
                 'total_filters': 256
             }
             params, other_params = ConfigFactory.fill_params(params, other_params, default_params, default_other_params)
-            return TextClassifyConfig(params, other_params)
+            config = TextClassifyConfig(params, other_params)
         else:
             raise Exception("unrecognized model_name!")
+        return config
 
     @staticmethod
     def fill_params(params, other_params, default_params, default_other_params):
@@ -44,6 +48,9 @@ class ConfigFactory:
             'files_path': files_path,
             'device': torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
             'is_char_segment': 1,
+            'min_freq': 2,
+            'is_revocab': 1,
+            'is_retrim_embedding': 0,
             'is_pretrained': 1,
             'embedding_length': 300,
             'dropout': 0.5,
@@ -58,19 +65,24 @@ class ConfigFactory:
 
 
 class TextClassifyConfig:
-    def __init__(self, params, other_params):
-        # file path
+    def __init__(self, params: dict, other_params: dict):
+        # files path
+        self.files_path = params['files_path']
         self.train_path = params['files_path'] + '/train.txt'
         self.dev_path = params['files_path'] + '/dev.txt'
         self.test_path = params['files_path'] + '/test.txt'
         self.vocab_path = params['files_path'] + '/vocab.pkl'
         self.save_path = params['files_path'] + '/saved_dict.ckpt'
+        self.trimmed_embed_path = params['files_path'] + '/trimmed_embedding.npz'
         self.log_path = params['files_path'] + '/log'
 
         # basic info
         self.model_name = params['model_name']
         self.device = params['device']
         self.is_char_segment = params['is_char_segment']
+        self.min_freq = params['min_freq']
+        self.is_revocab = params['is_revocab']
+        self.is_retrim_embedding = params['is_retrim_embedding']
         self.is_pretrained = params['is_pretrained']
         self.embedding_length = params['embedding_length']
         self.dropout = params['dropout']
@@ -80,13 +92,6 @@ class TextClassifyConfig:
         self.learning_rate = params['learning_rate']
         self.start_expire_after = params['start_expire_after']
         self.expire_batches = params['expire_batches']
-
-        self.class_list = [x.strip() for x in open(
-            params['files_path'] + '/class.txt', encoding='utf-8').readlines()]
-        self.embedding = torch.tensor(
-            np.load(params['files_path'] + '/embedding.npz')["embeddings"].astype('float32')) \
-            if params['is_pretrained'] == 1 else None
-        self.num_classes = len(self.class_list)
 
         # other_params
         self.other_params = other_params
@@ -105,19 +110,176 @@ class PreprocessorFactory:
     @staticmethod
     def get_preprocessor(config):
         if config['model_name'] == 'TextCNN':
-            preprocessor = TextClassifyPreprocessor()
+            preprocessor = TextClassifyPreprocessor(config)
+        else:
+            raise Exception("unrecognized model_name!")
         return preprocessor
 
 
 class TextClassifyPreprocessor:
-    def __init__(self):
-        self.test = '111'
+    def __init__(self, config: TextClassifyConfig):
+        # preprocess config
+        self.config = config
+        self.config.class_list = [x.strip() for x in open(
+            self.config.files_path + '/class.txt', encoding='utf-8').readlines()]
+        self.config.num_classes = len(self.config.class_list)
+        # tokenizer
+        self._tokenizer = self._get_tokenizer()
+        # vocab
+        self.vocab = self._get_vocab()
+        if self.config.is_revocab == 1:
+            self.vocab.build_vocab()
+        else:
+            self.vocab.load_vocab()
+        # embedding
+        self.embedding = self._get_embedding()
+        if self.config.is_retrim_embedding == 1:
+            self.embedding.build_trimmed()
+        else:
+            self.embedding.load_trimmed()
 
-    def build_dataset(config):
-        return '222'
+    def build_dataset(self):
+        pass
 
-    def preprocess(data):
-        return '222'
+    def _get_tokenizer(self):
+        tokenizer = Tokenizer(self.config.is_char_segment)
+        return tokenizer
+
+    def _get_vocab(self):
+        vocab = Vocab(self.config.train_path, self.config.vocab_path, self._tokenizer, self.config.min_freq)
+        return vocab
+
+    def _get_embedding(self):
+        embedding = Embedding(self.config.trimmed_embed_path)
+        return embedding
+
+
+class Tokenizer:
+    def __init__(self, is_char_segment):
+        self.is_char_segment = is_char_segment
+
+    def tokenize(self, text):
+        if self.is_char_segment:
+            return self.tokenize_by_char(text)
+        else:
+            return self.tokenize_by_word(text)
+
+    def tokenize_by_char(self, text):
+        result = [char for char in text]
+        return result
+
+    def tokenize_by_word(self, text):
+        result = text.split(' ')
+        return result
+
+
+class Vocab:
+    def __init__(self, train_path, vocab_path, tokenizer, min_freq=2):
+        self.train_path = train_path
+        self.vocab_path = vocab_path
+        self.tokenizer = tokenizer
+        self.min_freq = min_freq
+        self.idx_to_token, self.token_to_idx = ['<pad>', '<ukn>'], {'<pad>': 0, '<ukn>': 1}
+
+    def build_vocab(self):
+        vocab_dic = {}
+        with open(self.train_path, 'r', encoding='UTF-8') as f:
+            for line in f:
+                sentence = line.strip().split('\t')[0]
+                if sentence == '':
+                    continue
+                for word in self.tokenizer.tokenize(sentence):
+                    vocab_dic[word] = vocab_dic.get(word, 0) + 1
+
+        i = 2
+        for key in vocab_dic:
+            if vocab_dic[key] >= self.min_freq:
+                self.idx_to_token.append(key)
+                self.token_to_idx[key] = i
+                i = i + 1
+
+        pkl.dump(self.idx_to_token, open(self.vocab_path, 'wb'))
+
+    def load_vocab(self):
+        self.idx_to_token = pkl.load(open(self.vocab_path, 'rb'))
+        self.token_to_idx = {}
+        for idx, token in enumerate(self.idx_to_token):
+            self.token_to_idx[token] = idx
+
+    def get_len(self):
+        return len(self.idx_to_token)
+
+    def to_token(self, index):
+        return self.idx_to_token[index]
+
+    def to_index(self, token):
+        return self.token_to_idx.get(token, -1)
+
+
+class Embedding:
+    def __init__(self, trimmed_path: str, original_path: str = '', vocab: Vocab = None):
+        self.original_path = original_path
+        self.trimmed_path = trimmed_path
+        self.vocab = vocab
+        self.embedding = None
+        self.embedding_len = None
+        self.left_index = []
+        # ['<pad>', '<ukn>']
+        self.special_index = [0, 1]
+
+    def build_trimmed(self):
+        # embedding_len
+        with open(self.original_path, 'r') as f:
+            elems = f.readline().strip().split()
+            self.embedding_len = len(elems[1:])
+        # embedding
+        self.embedding = np.zeros((self.vocab.get_len(), self.embedding_len))
+
+        with open(self.original_path, 'r') as f:
+            for line in f:
+                elems = line.strip().split()
+                vocab_index = self.vocab.to_index(elems[0])
+                if vocab_index == -1:
+                    continue
+                if elems[0] == '<pad>' or elems[0] == '<ukn>':
+                    continue
+                self.embedding[vocab_index, 0:] = [float(elem) for elem in elems[1:]]
+
+        zero = np.zeros(self.embedding_len)
+        for vocab_index in range(self.vocab.get_len()):
+            if vocab_index == 0:
+                self.embedding[vocab_index] = self.get_pad_embedding()
+            elif vocab_index == 1:
+                self.embedding[vocab_index] = self.get_ukn_embedding()
+            else:
+                if (self.embedding[vocab_index] == zero).all():
+                    self.embedding[vocab_index] = self.get_other_embedding()
+                    self.left_index.append(vocab_index)
+
+        np.savez_compressed(self.trimmed_path, embedding=self.embedding, left_index=self.left_index,
+                            special_index=self.special_index)
+
+    def load_trimmed(self):
+        trimmed = np.load(self.trimmed_path)
+        self.embedding = trimmed['embedding']
+        self.left_index = trimmed['left_index']
+        self.special_index = trimmed['special_index']
+        self.embedding_len = self.embedding.shape[1]
+
+    def get_pad_embedding(self):
+        result = np.zeros(self.embedding_len)
+        return result
+
+    def get_ukn_embedding(self):
+        result = np.zeros(self.embedding_len)
+        return result
+
+    def get_other_embedding(self):
+        result = np.random.rand(self.embedding_len)
+        return result
+
+    def get_representation(self, index):
+        return self.embedding[index]
 
 
 # endregion
