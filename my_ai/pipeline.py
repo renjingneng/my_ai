@@ -1,16 +1,22 @@
 import os
+import math
 
 import torch
+import torch.utils.data
 import numpy as np
 import pickle as pkl
+
+UKN, PAD = '<ukn>', '<pad>'  # 未知字，padding符号
 
 
 # region Config
 class ConfigFactory:
     @staticmethod
-    def get_config(model_name, files_path='files', params=None, other_params=None):
+    def get_config(model_name, files_path, params=None, other_params=None):
         if model_name is None:
             raise Exception("model_name is None!")
+        if files_path is None:
+            raise Exception("files_path is None!")
 
         if model_name == "TextCNN":
             default_params = ConfigFactory.get_text_classify_params(model_name, files_path)
@@ -18,28 +24,22 @@ class ConfigFactory:
                 'filter_sizes': (2, 3, 4),
                 'total_filters': 256
             }
-            params, other_params = ConfigFactory.fill_params(params, other_params, default_params, default_other_params)
+            params = ConfigFactory.fill_params(params, default_params)
+            other_params = ConfigFactory.fill_params(other_params, default_other_params)
             config = TextClassifyConfig(params, other_params)
         else:
             raise Exception("unrecognized model_name!")
         return config
 
     @staticmethod
-    def fill_params(params, other_params, default_params, default_other_params):
+    def fill_params(params, default_params):
         if params is None:
             params = default_params
         else:
             for key in default_params:
                 if params.get(key) is None:
                     params[key] = default_params[key]
-
-        if other_params is None:
-            other_params = default_other_params
-        else:
-            for key in default_other_params:
-                if other_params.get(key) is None:
-                    other_params[key] = default_other_params[key]
-        return params, other_params
+        return params
 
     @staticmethod
     def get_text_classify_params(model_name, files_path):
@@ -74,6 +74,7 @@ class TextClassifyConfig:
         self.vocab_path = params['files_path'] + '/vocab.pkl'
         self.save_path = params['files_path'] + '/saved_dict.ckpt'
         self.trimmed_embed_path = params['files_path'] + '/trimmed_embedding.npz'
+        self.original_embed_path = params['files_path'] + '/sgns.sogou.char'
         self.log_path = params['files_path'] + '/log'
 
         # basic info
@@ -124,7 +125,7 @@ class TextClassifyPreprocessor:
             self.config.files_path + '/class.txt', encoding='utf-8').readlines()]
         self.config.num_classes = len(self.config.class_list)
         # tokenizer
-        self._tokenizer = self._get_tokenizer()
+        self.tokenizer = self._get_tokenizer()
         # vocab
         self.vocab = self._get_vocab()
         if self.config.is_revocab == 1:
@@ -139,18 +140,24 @@ class TextClassifyPreprocessor:
             self.embedding.load_trimmed()
 
     def build_dataset(self):
-        pass
+        train_dataset = TextClassifyDataset(self.config.train_path, self.config.text_length, self.vocab, self.tokenizer)
+        train_dataLoader = torch.utils.data.DataLoader(train_dataset,batch_size=self.config.batch_size)
+        dev_dataset = TextClassifyDataset(self.config.dev_path, self.config.text_length, self.vocab, self.tokenizer)
+        dev_dataLoader = torch.utils.data.DataLoader(dev_dataset,batch_size=self.config.batch_size)
+        text_dataset = TextClassifyDataset(self.config.test_path, self.config.text_length, self.vocab, self.tokenizer)
+        text_dataLoader = torch.utils.data.DataLoader(text_dataset,batch_size=self.config.batch_size)
+        return train_dataLoader,dev_dataLoader,text_dataLoader
 
     def _get_tokenizer(self):
         tokenizer = Tokenizer(self.config.is_char_segment)
         return tokenizer
 
     def _get_vocab(self):
-        vocab = Vocab(self.config.train_path, self.config.vocab_path, self._tokenizer, self.config.min_freq)
+        vocab = Vocab(self.config.train_path, self.config.vocab_path, self.tokenizer, self.config.min_freq)
         return vocab
 
     def _get_embedding(self):
-        embedding = Embedding(self.config.trimmed_embed_path)
+        embedding = Embedding(self.config.trimmed_embed_path, self.config.original_embed_path, self.vocab)
         return embedding
 
 
@@ -179,7 +186,7 @@ class Vocab:
         self.vocab_path = vocab_path
         self.tokenizer = tokenizer
         self.min_freq = min_freq
-        self.idx_to_token, self.token_to_idx = ['<pad>', '<ukn>'], {'<pad>': 0, '<ukn>': 1}
+        self.idx_to_token, self.token_to_idx = [PAD, UKN], {PAD: 0, UKN: 1}
 
     def build_vocab(self):
         vocab_dic = {}
@@ -224,7 +231,7 @@ class Embedding:
         self.embedding = None
         self.embedding_len = None
         self.left_index = []
-        # ['<pad>', '<ukn>']
+        # [PAD, UKN]
         self.special_index = [0, 1]
 
     def build_trimmed(self):
@@ -241,19 +248,19 @@ class Embedding:
                 vocab_index = self.vocab.to_index(elems[0])
                 if vocab_index == -1:
                     continue
-                if elems[0] == '<pad>' or elems[0] == '<ukn>':
+                if elems[0] == PAD or elems[0] == UKN:
                     continue
                 self.embedding[vocab_index, 0:] = [float(elem) for elem in elems[1:]]
 
         zero = np.zeros(self.embedding_len)
         for vocab_index in range(self.vocab.get_len()):
             if vocab_index == 0:
-                self.embedding[vocab_index] = self.get_pad_embedding()
+                self.embedding[vocab_index] = self._get_pad_embedding()
             elif vocab_index == 1:
-                self.embedding[vocab_index] = self.get_ukn_embedding()
+                self.embedding[vocab_index] = self._get_ukn_embedding()
             else:
                 if (self.embedding[vocab_index] == zero).all():
-                    self.embedding[vocab_index] = self.get_other_embedding()
+                    self.embedding[vocab_index] = self._get_other_embedding()
                     self.left_index.append(vocab_index)
 
         np.savez_compressed(self.trimmed_path, embedding=self.embedding, left_index=self.left_index,
@@ -266,20 +273,62 @@ class Embedding:
         self.special_index = trimmed['special_index']
         self.embedding_len = self.embedding.shape[1]
 
-    def get_pad_embedding(self):
+    def get_representation(self, index):
+        return self.embedding[index]
+
+    def _get_pad_embedding(self):
         result = np.zeros(self.embedding_len)
         return result
 
-    def get_ukn_embedding(self):
+    def _get_ukn_embedding(self):
         result = np.zeros(self.embedding_len)
         return result
 
-    def get_other_embedding(self):
+    def _get_other_embedding(self):
         result = np.random.rand(self.embedding_len)
         return result
 
-    def get_representation(self, index):
-        return self.embedding[index]
+
+class TextClassifyDataset(torch.utils.data.IterableDataset):
+    """
+    loading data async,load one file when single-process,one file per processor when multi-process
+    """
+
+    def __init__(self, file_path, text_length, vocab, tokenizer):
+        super(TextClassifyDataset).__init__()
+        self.file_path = file_path
+        self.text_length = text_length
+        self.vocab = vocab
+        self.tokenizer = tokenizer
+        self.file_iterator = None
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is None:
+            self.file_iterator = self._get_file_iterator(self.file_path)
+        else:
+            # TODO
+            self.file_iterator = self._get_file_iterator(self.file_path)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        line = next(self.file_iterator)
+        sentence, label = line.split('\t')
+        tokens = self.tokenizer.tokenize(sentence)
+        if len(tokens) < self.text_length:
+            tokens.extend([PAD] * (self.text_length - len(tokens)))
+        else:
+            tokens = tokens[:self.text_length]
+        return tokens, label
+
+    def _get_file_iterator(self, file_path):
+        with open(file_path, 'r') as file:
+            while True:
+                line = file.readline().strip()
+                if line == '':
+                    break
+                else:
+                    yield line
 
 
 # endregion
