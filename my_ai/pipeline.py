@@ -94,6 +94,11 @@ class TextClassifyConfig:
         self.start_expire_after = params['start_expire_after']
         self.expire_batches = params['expire_batches']
 
+        self.class_list = None
+        self.num_classes = None
+        self.tokenizer: Tokenizer = None
+        self.vocab: Vocab = None
+        self.embedding: Embedding = None
         # other_params
         self.other_params = other_params
 
@@ -119,45 +124,51 @@ class PreprocessorFactory:
 
 class TextClassifyPreprocessor:
     def __init__(self, config: TextClassifyConfig):
-        # preprocess config
         self.config = config
+
+    def prepare(self):
+        # preprocess config
         self.config.class_list = [x.strip() for x in open(
             self.config.files_path + '/class.txt', encoding='utf-8').readlines()]
         self.config.num_classes = len(self.config.class_list)
         # tokenizer
-        self.tokenizer = self._get_tokenizer()
+        self.config.tokenizer = self._get_tokenizer()
         # vocab
-        self.vocab = self._get_vocab()
+        self.config.vocab = self._get_vocab()
         if self.config.is_revocab == 1:
-            self.vocab.build_vocab()
+            self.config.vocab.build_vocab()
         else:
-            self.vocab.load_vocab()
+            self.config.vocab.load_vocab()
         # embedding
-        self.embedding = self._get_embedding()
+        self.config.embedding = self._get_embedding()
         if self.config.is_retrim_embedding == 1:
-            self.embedding.build_trimmed()
+            self.config.embedding.build_trimmed()
         else:
-            self.embedding.load_trimmed()
+            self.config.embedding.load_trimmed()
+        return self
 
-    def build_dataset(self):
-        train_dataset = TextClassifyDataset(self.config.train_path, self.config.text_length, self.vocab, self.tokenizer)
-        train_dataLoader = torch.utils.data.DataLoader(train_dataset,batch_size=self.config.batch_size)
-        dev_dataset = TextClassifyDataset(self.config.dev_path, self.config.text_length, self.vocab, self.tokenizer)
-        dev_dataLoader = torch.utils.data.DataLoader(dev_dataset,batch_size=self.config.batch_size)
-        text_dataset = TextClassifyDataset(self.config.test_path, self.config.text_length, self.vocab, self.tokenizer)
-        text_dataLoader = torch.utils.data.DataLoader(text_dataset,batch_size=self.config.batch_size)
-        return train_dataLoader,dev_dataLoader,text_dataLoader
+    def get_dataset(self):
+        train_dataset = TextClassifyDataset(self.config.train_path, self.config.text_length, self.config.vocab,
+                                            self.config.tokenizer)
+        self.config.train_dataLoader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config.batch_size)
+        dev_dataset = TextClassifyDataset(self.config.dev_path, self.config.text_length, self.config.vocab,
+                                          self.config.tokenizer)
+        self.config.dev_dataLoader = torch.utils.data.DataLoader(dev_dataset, batch_size=self.config.batch_size)
+        text_dataset = TextClassifyDataset(self.config.test_path, self.config.text_length, self.config.vocab,
+                                           self.config.tokenizer)
+        self.config.text_dataLoader = torch.utils.data.DataLoader(text_dataset, batch_size=self.config.batch_size)
+        return self
 
     def _get_tokenizer(self):
         tokenizer = Tokenizer(self.config.is_char_segment)
         return tokenizer
 
     def _get_vocab(self):
-        vocab = Vocab(self.config.train_path, self.config.vocab_path, self.tokenizer, self.config.min_freq)
+        vocab = Vocab(self.config.train_path, self.config.vocab_path, self.config.tokenizer, self.config.min_freq)
         return vocab
 
     def _get_embedding(self):
-        embedding = Embedding(self.config.trimmed_embed_path, self.config.original_embed_path, self.vocab)
+        embedding = Embedding(self.config.trimmed_embed_path, self.config.original_embed_path, self.config.vocab)
         return embedding
 
 
@@ -228,8 +239,8 @@ class Embedding:
         self.original_path = original_path
         self.trimmed_path = trimmed_path
         self.vocab = vocab
-        self.embedding = None
-        self.embedding_len = None
+        self.representation = None
+        self.len = None
         self.left_index = []
         # [PAD, UKN]
         self.special_index = [0, 1]
@@ -238,9 +249,9 @@ class Embedding:
         # embedding_len
         with open(self.original_path, 'r') as f:
             elems = f.readline().strip().split()
-            self.embedding_len = len(elems[1:])
+            self.len = len(elems[1:])
         # embedding
-        self.embedding = np.zeros((self.vocab.get_len(), self.embedding_len))
+        self.representation = np.zeros((self.vocab.get_len(), self.len))
 
         with open(self.original_path, 'r') as f:
             for line in f:
@@ -250,42 +261,45 @@ class Embedding:
                     continue
                 if elems[0] == PAD or elems[0] == UKN:
                     continue
-                self.embedding[vocab_index, 0:] = [float(elem) for elem in elems[1:]]
+                self.representation[vocab_index, 0:] = [float(elem) for elem in elems[1:]]
 
-        zero = np.zeros(self.embedding_len)
+        zero = np.zeros(self.len)
         for vocab_index in range(self.vocab.get_len()):
             if vocab_index == 0:
-                self.embedding[vocab_index] = self._get_pad_embedding()
+                self.representation[vocab_index] = self._get_pad_embedding()
             elif vocab_index == 1:
-                self.embedding[vocab_index] = self._get_ukn_embedding()
+                self.representation[vocab_index] = self._get_ukn_embedding()
             else:
-                if (self.embedding[vocab_index] == zero).all():
-                    self.embedding[vocab_index] = self._get_other_embedding()
+                if (self.representation[vocab_index] == zero).all():
+                    self.representation[vocab_index] = self._get_other_embedding()
                     self.left_index.append(vocab_index)
 
-        np.savez_compressed(self.trimmed_path, embedding=self.embedding, left_index=self.left_index,
+        np.savez_compressed(self.trimmed_path, representation=self.representation, left_index=self.left_index,
                             special_index=self.special_index)
 
     def load_trimmed(self):
         trimmed = np.load(self.trimmed_path)
-        self.embedding = trimmed['embedding']
+        self.representation = trimmed['representation']
         self.left_index = trimmed['left_index']
         self.special_index = trimmed['special_index']
-        self.embedding_len = self.embedding.shape[1]
+        self.len = self.representation.shape[1]
 
-    def get_representation(self, index):
-        return self.embedding[index]
+    def get_representation_by_index(self, index):
+        return self.representation[index]
+
+    def get_all_representation(self):
+        return self.representation
 
     def _get_pad_embedding(self):
-        result = np.zeros(self.embedding_len)
+        result = np.zeros(self.len)
         return result
 
     def _get_ukn_embedding(self):
-        result = np.zeros(self.embedding_len)
+        result = np.zeros(self.len)
         return result
 
     def _get_other_embedding(self):
-        result = np.random.rand(self.embedding_len)
+        result = np.random.rand(self.len)
         return result
 
 

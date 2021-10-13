@@ -30,17 +30,17 @@ def train_textCNN():
     files_path = 'data/text_classify'
     conf = my_ai.pipeline.ConfigFactory.get_config(model_name, files_path)
     preprocessor = my_ai.pipeline.PreprocessorFactory.get_preprocessor(conf)
-    # dataset = preprocessor.build_dataset(conf)
-    # model = my_ai.model.ModelFactory.get_model(conf)
-    # trainer = my_ai.pipeline.TrainerFactory.get_trainer(conf, dataset, model)
-    # trainer.start()
+    preprocessor.prepare().get_dataset()
+    model = my_ai.model.ModelFactory.get_model(conf)
+    trainer = my_ai.pipeline.TrainerFactory.get_trainer(conf, model)
+    trainer.start()
 
 
 def predict_textCNN(): pass
 
 
 def run():
-    test()
+    train_textCNN()
 
 
 if __name__ == '__main__':
