@@ -99,6 +99,9 @@ class TextClassifyConfig:
         self.tokenizer: Tokenizer = None
         self.vocab: Vocab = None
         self.embedding: Embedding = None
+        self.train_dataloader: torch.utils.data.DataLoader = None
+        self.dev_dataloader: torch.utils.data.DataLoader = None
+        self.test_dataloader: torch.utils.data.DataLoader = None
         # other_params
         self.other_params = other_params
 
@@ -126,7 +129,7 @@ class TextClassifyPreprocessor:
     def __init__(self, config: TextClassifyConfig):
         self.config = config
 
-    def prepare(self):
+    def preprocess(self):
         # preprocess config
         self.config.class_list = [x.strip() for x in open(
             self.config.files_path + '/class.txt', encoding='utf-8').readlines()]
@@ -145,19 +148,21 @@ class TextClassifyPreprocessor:
             self.config.embedding.build_trimmed()
         else:
             self.config.embedding.load_trimmed()
+        # dataloader
+        self.config.train_dataloader, self.config.dev_dataloader, self.config.test_dataloader = self._get_dataloader()
         return self
 
-    def get_dataset(self):
+    def _get_dataloader(self):
         train_dataset = TextClassifyDataset(self.config.train_path, self.config.text_length, self.config.vocab,
                                             self.config.tokenizer)
-        self.config.train_dataLoader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config.batch_size)
+        train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config.batch_size)
         dev_dataset = TextClassifyDataset(self.config.dev_path, self.config.text_length, self.config.vocab,
                                           self.config.tokenizer)
-        self.config.dev_dataLoader = torch.utils.data.DataLoader(dev_dataset, batch_size=self.config.batch_size)
-        text_dataset = TextClassifyDataset(self.config.test_path, self.config.text_length, self.config.vocab,
+        dev_dataloader = torch.utils.data.DataLoader(dev_dataset, batch_size=self.config.batch_size)
+        test_dataset = TextClassifyDataset(self.config.test_path, self.config.text_length, self.config.vocab,
                                            self.config.tokenizer)
-        self.config.text_dataLoader = torch.utils.data.DataLoader(text_dataset, batch_size=self.config.batch_size)
-        return self
+        test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config.batch_size)
+        return train_dataloader, dev_dataloader, test_dataloader
 
     def _get_tokenizer(self):
         tokenizer = Tokenizer(self.config.is_char_segment)
@@ -350,18 +355,20 @@ class TextClassifyDataset(torch.utils.data.IterableDataset):
 # region Trainer
 class TrainerFactory:
     @staticmethod
-    def get_trainer(config, dataset, model):
+    def get_trainer(config, model):
         trainer = None
         if config['model_name'] == 'TextCNN':
-            trainer = TextClassifyTrainer(dataset, model)
+            trainer = TextClassifyTrainer(config, model)
         return trainer
 
 
 class TextClassifyTrainer:
-    def __init__(self, dataset, model):
-        self.dataset = dataset
+    def __init__(self, config: TextClassifyConfig, model):
+        self.config = config
         self.model = model
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.learning_rate)
 
     def start(self):
-        return '222'
+        print('111')
+
 # endregion
