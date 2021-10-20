@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import my_ai
+import my_ai.pipeline
 
 
 class TextCNN(nn.Module):

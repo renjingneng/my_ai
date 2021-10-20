@@ -6,7 +6,9 @@ import torch.utils.data
 import numpy as np
 import pickle as pkl
 
-UKN, PAD = '<ukn>', '<pad>'  # 未知字，padding符号
+import my_ai.model
+
+UKN, PAD = '<ukn>', '<pad>'
 
 
 # region Config
@@ -106,19 +108,13 @@ class TextClassifyConfig:
         self.other_params = other_params
 
 
-# class TextSeqConfig: pass
-
-
-# class PicClassifyConfig: pass
-
-
 # endregion
 
 # region Preprocessor
 class PreprocessorFactory:
     @staticmethod
     def get_preprocessor(config):
-        if config['model_name'] == 'TextCNN':
+        if config.model_name == 'TextCNN':
             preprocessor = TextClassifyPreprocessor(config)
         else:
             raise Exception("unrecognized model_name!")
@@ -197,7 +193,7 @@ class Tokenizer:
 
 
 class Vocab:
-    def __init__(self, train_path, vocab_path, tokenizer, min_freq=2):
+    def __init__(self, train_path, vocab_path, tokenizer:Tokenizer, min_freq=2):
         self.train_path = train_path
         self.vocab_path = vocab_path
         self.tokenizer = tokenizer
@@ -313,7 +309,7 @@ class TextClassifyDataset(torch.utils.data.IterableDataset):
     loading data async,load one file when single-process,one file per processor when multi-process
     """
 
-    def __init__(self, file_path, text_length, vocab, tokenizer):
+    def __init__(self, file_path, text_length, vocab:Vocab, tokenizer:Tokenizer):
         super(TextClassifyDataset).__init__()
         self.file_path = file_path
         self.text_length = text_length
@@ -352,13 +348,29 @@ class TextClassifyDataset(torch.utils.data.IterableDataset):
 
 # endregion
 
+# region Model
+class ModelFactory:
+    @staticmethod
+    def get_model(config):
+        model = None
+        if config.model_name == 'TextCNN':
+            model = my_ai.model.text_classify.TextCNN(config)
+        else:
+            raise Exception("unrecognized model_name!")
+        return model
+
+
+# endregion
+
 # region Trainer
 class TrainerFactory:
     @staticmethod
     def get_trainer(config, model):
         trainer = None
-        if config['model_name'] == 'TextCNN':
+        if config.model_name == 'TextCNN':
             trainer = TextClassifyTrainer(config, model)
+        else:
+            raise Exception("unrecognized model_name!")
         return trainer
 
 

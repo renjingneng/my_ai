@@ -7,7 +7,10 @@ import torch
 import torch.utils.data
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-import my_ai
+from my_ai.pipeline import ConfigFactory
+from my_ai.pipeline import PreprocessorFactory
+from my_ai.pipeline import ModelFactory
+from my_ai.pipeline import TrainerFactory
 
 
 def makesure_reproducible():
@@ -23,14 +26,14 @@ def train_textCNN():
     model_name = 'TextCNN'
     files_path = 'data/text_classify'
     # step2.conf
-    conf = my_ai.pipeline.ConfigFactory.get_config(model_name, files_path)
-    preprocessor = my_ai.pipeline.PreprocessorFactory.get_preprocessor(conf)
+    conf = ConfigFactory.get_config(model_name, files_path)
+    preprocessor = PreprocessorFactory.get_preprocessor(conf)
     preprocessor.preprocess()
     # step3.model
-    model = my_ai.model.ModelFactory.get_model(conf)
+    # model = ModelFactory.get_model(conf)
     # step4.train
-    trainer = my_ai.pipeline.TrainerFactory.get_trainer(conf, model)
-    trainer.start()
+    # trainer = TrainerFactory.get_trainer(conf, model)
+    # trainer.start()
 
 
 def predict_textCNN(): pass
