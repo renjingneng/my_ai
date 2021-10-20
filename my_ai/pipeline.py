@@ -1,6 +1,7 @@
 import os
 import math
 from pprint import pprint
+import logging
 
 import torch
 import torch.utils.data
@@ -77,7 +78,7 @@ class TextClassifyConfig:
         self.vocab_path = params['files_path'] + '/vocab.pkl'
         self.save_path = params['files_path'] + '/saved_dict.ckpt'
         self.trimmed_embed_path = params['files_path'] + '/trimmed_embedding.npz'
-        self.original_embed_path = params['files_path'] + '/sgns.sogou.char'
+        self.original_embed_path = params['files_path'] + '/original_embedding'
         self.log_path = params['files_path'] + '/log'
 
         # basic info
@@ -135,20 +136,40 @@ class TextClassifyPreprocessor:
             self.config.files_path + '/class.txt', encoding='utf-8').readlines()]
         self.config.num_classes = len(self.config.class_list)
         # tokenizer
+        logging.info('--Begin  tokenizer.')
+        logging.debug(f'\r\n\
+           config.is_char_segment:{self.config.is_char_segment}\
+        ')
         self.config.tokenizer = self._get_tokenizer()
+        logging.info('--Finished  tokenizer.')
         # vocab
+        logging.info('--Begin  vocab.')
         self.config.vocab = self._get_vocab()
         if self.config.is_revocab == 1:
+            logging.info('Start building vocab.')
             self.config.vocab.build_vocab_of_sentences()
         else:
+            logging.info('Start reloading  vocab.')
             self.config.vocab.load_vocab()
-        return
+        logging.info('--Finished vocab.')
         # embedding
+        logging.info('--Begin  embedding.')
+        logging.debug(f'\r\n\
+           config.trimmed_embed_path:{self.config.trimmed_embed_path}\r\n\
+           config.original_embed_path:{self.config.original_embed_path}\
+        ')
         self.config.embedding = self._get_embedding()
         if self.config.is_retrim_embedding == 1:
+            logging.info('Start building  embedding.')
             self.config.embedding.build_trimmed()
         else:
+            logging.info('Start reloading  embedding.')
             self.config.embedding.load_trimmed()
+        logging.debug(f'\r\n\
+           left index with its token:{self.config.embedding.get_left_index_token()}\
+        ')
+        logging.info('--Finished  embedding.')
+        return  # TODO
         # dataloader
         self.config.train_dataloader, self.config.dev_dataloader, self.config.test_dataloader = self._get_dataloader()
         return self
@@ -235,6 +256,9 @@ class Vocab:
     def get_len(self):
         return len(self.idx_to_token)
 
+    def __len__(self):
+        return len(self.idx_to_token)
+
     def to_token(self, index):
         return self.idx_to_token[index]
 
@@ -254,22 +278,28 @@ class Embedding:
         self.special_index = [0, 1]
 
     def build_trimmed(self):
+        original_has_header = True
         # embedding_len
-        with open(self.original_path, 'r') as f:
+        with open(self.original_path, 'r', encoding='UTF-8') as f:
+            if original_has_header:
+                f.readline()
             elems = f.readline().strip().split()
             self.len = len(elems[1:])
-        # embedding
+        # representation of embedding
         self.representation = np.zeros((self.vocab.get_len(), self.len))
 
-        with open(self.original_path, 'r') as f:
+        with open(self.original_path, 'r', encoding='UTF-8') as f:
+            if original_has_header:
+                f.readline()
             for line in f:
                 elems = line.strip().split()
                 vocab_index = self.vocab.to_index(elems[0])
                 if vocab_index == -1:
                     continue
+                # if original embedding has PAD or UKN ,just abandon it bc it may has diff meaning
                 if elems[0] == PAD or elems[0] == UKN:
                     continue
-                self.representation[vocab_index, 0:] = [float(elem) for elem in elems[1:]]
+                self.representation[vocab_index, 0:] = elems[1:]
 
         zero = np.zeros(self.len)
         for vocab_index in range(self.vocab.get_len()):
@@ -298,12 +328,15 @@ class Embedding:
     def get_all_representation(self):
         return self.representation
 
+    def get_left_index_token(self):
+        return [(index, self.vocab.to_token(index)) for index in self.left_index]
+
     def _get_pad_embedding(self):
-        result = np.zeros(self.len)
+        result = np.random.rand(self.len)
         return result
 
     def _get_ukn_embedding(self):
-        result = np.zeros(self.len)
+        result = np.random.rand(self.len)
         return result
 
     def _get_other_embedding(self):
@@ -344,7 +377,7 @@ class TextClassifyDataset(torch.utils.data.IterableDataset):
         return tokens, label
 
     def _get_file_iterator(self, file_path):
-        with open(file_path, 'r') as file:
+        with open(file_path, 'r', encoding='UTF-8') as file:
             while True:
                 line = file.readline().strip()
                 if line == '':

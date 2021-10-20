@@ -1,6 +1,7 @@
 import sys
 import os
 import random
+import logging
 
 import numpy as np
 import torch
@@ -25,7 +26,8 @@ def train_textCNN():
     # step1.input
     model_name = 'TextCNN'
     files_path = 'data/text_classify'
-    params = {'is_revocab': 1, 'min_freq': 7}
+    params = {'is_revocab': 0, 'is_retrim_embedding': 0, 'min_freq': 1}
+    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s-%(asctime)s-%(message)s')
     # step2.conf
     conf = ConfigFactory.get_config(model_name, files_path, params)
     preprocessor = PreprocessorFactory.get_preprocessor(conf)
