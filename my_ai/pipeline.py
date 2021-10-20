@@ -169,21 +169,26 @@ class TextClassifyPreprocessor:
            left index with its token:{self.config.embedding.get_left_index_token()}\
         ')
         logging.info('--Finished  embedding.')
-        return  # TODO
         # dataloader
+        logging.info('--Begin  dataloader.')
+        logging.debug(f'\r\n\
+           config.batch_size:{self.config.batch_size}\r\n\
+           config.text_length:{self.config.text_length}\
+        ')
         self.config.train_dataloader, self.config.dev_dataloader, self.config.test_dataloader = self._get_dataloader()
+        logging.info('--Finished  dataloader.')
         return self
 
     def _get_dataloader(self):
         train_dataset = TextClassifyDataset(self.config.train_path, self.config.text_length, self.config.vocab,
                                             self.config.tokenizer)
-        train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=self.config.batch_size)
+        train_dataloader = Dataloader(train_dataset, self.config.batch_size)
         dev_dataset = TextClassifyDataset(self.config.dev_path, self.config.text_length, self.config.vocab,
                                           self.config.tokenizer)
-        dev_dataloader = torch.utils.data.DataLoader(dev_dataset, batch_size=self.config.batch_size)
+        dev_dataloader = Dataloader(dev_dataset, self.config.batch_size)
         test_dataset = TextClassifyDataset(self.config.test_path, self.config.text_length, self.config.vocab,
                                            self.config.tokenizer)
-        test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=self.config.batch_size)
+        test_dataloader = Dataloader(test_dataset, self.config.batch_size)
         return train_dataloader, dev_dataloader, test_dataloader
 
     def _get_tokenizer(self):
@@ -344,46 +349,67 @@ class Embedding:
         return result
 
 
-class TextClassifyDataset(torch.utils.data.IterableDataset):
-    """
-    loading data async,load one file when single-process,one file per processor when multi-process
-    """
+class TextClassifyDataset:
 
     def __init__(self, file_path, text_length, vocab: Vocab, tokenizer: Tokenizer):
-        super(TextClassifyDataset).__init__()
         self.file_path = file_path
         self.text_length = text_length
         self.vocab = vocab
         self.tokenizer = tokenizer
-        self.file_iterator = None
-        worker_info = torch.utils.data.get_worker_info()
-        if worker_info is None:
-            self.file_iterator = self._get_file_iterator(self.file_path)
-        else:
-            # TODO
-            self.file_iterator = self._get_file_iterator(self.file_path)
+        self.file_iterator = self._get_file_iterator()
 
     def __iter__(self):
         return self
 
     def __next__(self):
+        separator = '\t'
         line = next(self.file_iterator)
-        sentence, label = line.split('\t')
+        sentence, label = line.split(separator)
         tokens = self.tokenizer.tokenize(sentence)
         if len(tokens) < self.text_length:
             tokens.extend([PAD] * (self.text_length - len(tokens)))
         else:
             tokens = tokens[:self.text_length]
-        return tokens, label
+        return [self.vocab.to_index(token) for token in tokens], label
 
-    def _get_file_iterator(self, file_path):
-        with open(file_path, 'r', encoding='UTF-8') as file:
+    def _get_file_iterator(self):
+        with open(self.file_path, 'r', encoding='UTF-8') as file:
             while True:
                 line = file.readline().strip()
                 if line == '':
                     break
                 else:
                     yield line
+
+
+class Dataloader:
+    def __init__(self, dataset, batch_size):
+        self.dataset_iterator = iter(dataset)
+        self.batch_size = batch_size
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        i = 0
+        X_list = []
+        Y_list = []
+        while True:
+            try:
+                X,Y = next(self.dataset_iterator)
+            except StopIteration:
+                break
+            else:
+                X_list.append(X)
+                Y_list.append(Y)
+                i = i +1
+                if i == self.batch_size:
+                    break
+
+        if len(X_list) == 0:
+            raise StopIteration
+        else:
+            return X_list,Y_list
 
 
 # endregion
