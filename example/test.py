@@ -25,8 +25,9 @@ def train_textCNN():
     # step1.input
     model_name = 'TextCNN'
     files_path = 'data/text_classify'
+    params = {'is_revocab': 1, 'min_freq': 7}
     # step2.conf
-    conf = ConfigFactory.get_config(model_name, files_path)
+    conf = ConfigFactory.get_config(model_name, files_path, params)
     preprocessor = PreprocessorFactory.get_preprocessor(conf)
     preprocessor.preprocess()
     # step3.model

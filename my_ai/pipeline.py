@@ -1,5 +1,6 @@
 import os
 import math
+from pprint import pprint
 
 import torch
 import torch.utils.data
@@ -107,6 +108,9 @@ class TextClassifyConfig:
         # other_params
         self.other_params = other_params
 
+    def show(self):
+        pprint(vars(self))
+
 
 # endregion
 
@@ -135,9 +139,10 @@ class TextClassifyPreprocessor:
         # vocab
         self.config.vocab = self._get_vocab()
         if self.config.is_revocab == 1:
-            self.config.vocab.build_vocab()
+            self.config.vocab.build_vocab_of_sentences()
         else:
             self.config.vocab.load_vocab()
+        return
         # embedding
         self.config.embedding = self._get_embedding()
         if self.config.is_retrim_embedding == 1:
@@ -193,18 +198,20 @@ class Tokenizer:
 
 
 class Vocab:
-    def __init__(self, train_path, vocab_path, tokenizer:Tokenizer, min_freq=2):
+    def __init__(self, train_path, vocab_path, tokenizer: Tokenizer, min_freq=2):
         self.train_path = train_path
         self.vocab_path = vocab_path
         self.tokenizer = tokenizer
         self.min_freq = min_freq
         self.idx_to_token, self.token_to_idx = [PAD, UKN], {PAD: 0, UKN: 1}
 
-    def build_vocab(self):
+    def build_vocab_of_sentences(self):
         vocab_dic = {}
+        separator = '\t'
+
         with open(self.train_path, 'r', encoding='UTF-8') as f:
             for line in f:
-                sentence = line.strip().split('\t')[0]
+                sentence = line.strip().split(separator)[0]
                 if sentence == '':
                     continue
                 for word in self.tokenizer.tokenize(sentence):
@@ -309,7 +316,7 @@ class TextClassifyDataset(torch.utils.data.IterableDataset):
     loading data async,load one file when single-process,one file per processor when multi-process
     """
 
-    def __init__(self, file_path, text_length, vocab:Vocab, tokenizer:Tokenizer):
+    def __init__(self, file_path, text_length, vocab: Vocab, tokenizer: Tokenizer):
         super(TextClassifyDataset).__init__()
         self.file_path = file_path
         self.text_length = text_length
