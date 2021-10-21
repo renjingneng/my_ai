@@ -7,7 +7,7 @@ import torch
 import numpy as np
 import pickle as pkl
 
-import my_ai.model
+import my_ai.utility
 
 UKN, PAD = '<ukn>', '<pad>'
 
@@ -57,7 +57,7 @@ class ConfigFactory:
             'is_pretrained': 1,
             'embedding_length': 300,
             'dropout': 0.5,
-            'total_epochs': 20,
+            'num_epochs': 20,
             'batch_size': 128,
             'text_length': 30,
             'learning_rate': 1e-3,
@@ -90,7 +90,7 @@ class TextClassifyConfig:
         self.is_pretrained = params['is_pretrained']
         self.embedding_length = params['embedding_length']
         self.dropout = params['dropout']
-        self.total_epochs = params['total_epochs']
+        self.num_epochs = params['num_epochs']
         self.batch_size = params['batch_size']
         self.text_length = params['text_length']
         self.learning_rate = params['learning_rate']
@@ -244,6 +244,8 @@ class Vocab:
 
         i = 2
         for key in vocab_dic:
+            if key == PAD or key == UKN:
+                continue
             if vocab_dic[key] >= self.min_freq:
                 self.idx_to_token.append(key)
                 self.token_to_idx[key] = i
@@ -267,7 +269,9 @@ class Vocab:
         return self.idx_to_token[index]
 
     def to_index(self, token):
-        return self.token_to_idx.get(token, -1)
+        if token == PAD or token == UKN:
+            return 1
+        return self.token_to_idx.get(token, 1)
 
 
 class Embedding:
@@ -360,6 +364,9 @@ class TextClassifyDataset:
     def __iter__(self):
         return self
 
+    def __len__(self):
+        return 10 # TODO
+
     def __next__(self):
         separator = '\t'
         line = next(self.file_iterator)
@@ -389,26 +396,29 @@ class Dataloader:
     def __iter__(self):
         return self
 
+    def __len__(self):
+        return 10  # TODO
+
     def __next__(self):
         i = 0
         X_list = []
         Y_list = []
         while True:
             try:
-                X,Y = next(self.dataset_iterator)
+                X, Y = next(self.dataset_iterator)
             except StopIteration:
                 break
             else:
                 X_list.append(X)
                 Y_list.append(Y)
-                i = i +1
+                i = i + 1
                 if i == self.batch_size:
                     break
 
         if len(X_list) == 0:
             raise StopIteration
         else:
-            return X_list,Y_list
+            return X_list, Y_list
 
 
 # endregion
@@ -439,7 +449,6 @@ class ModelFactory:
 class TrainerFactory:
     @staticmethod
     def get_trainer(config, model):
-        trainer = None
         if config.model_name == 'TextCNN':
             trainer = TextClassifyTrainer(config, model)
         else:
@@ -452,8 +461,47 @@ class TextClassifyTrainer:
         self.config = config
         self.model = model
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.learning_rate)
+        self.animator = my_ai.utility.AnimatorFactory.get_animator()
 
     def start(self):
-        print('111')
+        # step1
+        self.model.to(self.config.device)
+        metric = my_ai.utility.Accumulator(3)  # Sum of training loss, sum of training accuracy, no. of examples
+        loss = torch.nn.CrossEntropyLoss()
+        timer, num_batches = my_ai.utility.Timer(), len(self.config.train_dataloader)
+
+        self.animator.line_start(num_batches)
+        # step2
+        for epoch in range(self.config.num_epochs):
+            self.model.train()
+            for i, (X, y) in enumerate(self.config.train_dataloader):
+                # step2.1
+                timer.start()
+                self.optimizer.zero_grad()
+                X, y = torch.tensor(X), torch.tensor(y)
+                X, y = X.to(self.config.device), y.to(self.config.device)
+                y_hat = self.model(X)
+                l = loss(y_hat, y)
+                l.backward()
+                self.optimizer.step()
+                timer.stop()
+                # step2.2
+                with torch.no_grad():
+                    metric.add(l * X.shape[0], my_ai.utility.accuracy(y_hat, y), X.shape[0])
+                train_l = metric[0] / metric[2]
+                train_acc = metric[1] / metric[2]
+                self.animator.train_line_append(epoch, i, {"train_l": train_l, "train_acc": train_acc})
+            self.evaluate()
+
+    def evaluate(self, epoch):
+        metric_eval = my_ai.utility.Accumulator(2)  # No. of correct predictions, no. of predictions
+        self.model.eval()
+        with torch.no_grad():
+            for X, y in self.config.train_dataloader:
+                X, y = torch.tensor(X), torch.tensor(y)
+                X, y = X.to(self.config.device), y.to(self.config.device)
+                metric_eval.add(my_ai.utility.accuracy(self.model(X), y), y.numel())
+        test_acc = metric_eval[0] / metric_eval[1]
+        self.animator.test_line_append(epoch, {"test_acc": test_acc})
 
 # endregion
