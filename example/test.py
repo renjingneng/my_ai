@@ -36,7 +36,7 @@ def train_textCNN():
     model = ModelFactory.get_model(conf)
     # step4.train
     trainer = TrainerFactory.get_trainer(conf, model)
-    # trainer.start()
+    trainer.start()
 
 
 def predict_textCNN(): pass

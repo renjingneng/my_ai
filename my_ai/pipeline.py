@@ -61,8 +61,9 @@ class ConfigFactory:
             'batch_size': 128,
             'text_length': 30,
             'learning_rate': 1e-3,
-            'start_expire_after': 1,  # after how many epochs begin counting expire
-            'expire_batches': 1000,  # early drop after {expire_batches} batches without improvement
+            'count_expire_after': 1,  # after how many epochs begin counting expire
+            'expire_points': 10,  # early drop after {expire_points} checkpoints without improvement
+            'checkpoint_interval': 20,  # check stats after training {checkpoint_interval} batches
         }
         return params
 
@@ -94,8 +95,9 @@ class TextClassifyConfig:
         self.batch_size = params['batch_size']
         self.text_length = params['text_length']
         self.learning_rate = params['learning_rate']
-        self.start_expire_after = params['start_expire_after']
-        self.expire_batches = params['expire_batches']
+        self.count_expire_after = params['count_expire_after']
+        self.expire_points = params['expire_points']
+        self.checkpoint_interval = params['checkpoint_interval']
 
         self.class_list = None
         self.num_classes = None
@@ -365,7 +367,15 @@ class TextClassifyDataset:
         return self
 
     def __len__(self):
-        return 10 # TODO
+        length = 0
+        with open(self.file_path, 'r', encoding='UTF-8') as file:
+            while True:
+                line = file.readline().strip()
+                if line == '':
+                    break
+                else:
+                    length = length + 1
+        return length
 
     def __next__(self):
         separator = '\t'
@@ -378,6 +388,10 @@ class TextClassifyDataset:
             tokens = tokens[:self.text_length]
         return [self.vocab.to_index(token) for token in tokens], label
 
+    def reset(self):
+        self.file_iterator = self._get_file_iterator()
+        return self
+
     def _get_file_iterator(self):
         with open(self.file_path, 'r', encoding='UTF-8') as file:
             while True:
@@ -389,15 +403,20 @@ class TextClassifyDataset:
 
 
 class Dataloader:
-    def __init__(self, dataset, batch_size):
-        self.dataset_iterator = iter(dataset)
+    def __init__(self, dataset_iterator, batch_size):
+        self.dataset_iterator = dataset_iterator
         self.batch_size = batch_size
 
     def __iter__(self):
         return self
 
     def __len__(self):
-        return 10  # TODO
+        length = len(self.dataset_iterator)
+        return math.ceil(length / self.batch_size)
+
+    def reset(self):
+        self.dataset_iterator.reset()
+        return
 
     def __next__(self):
         i = 0
@@ -458,50 +477,103 @@ class TrainerFactory:
 
 class TextClassifyTrainer:
     def __init__(self, config: TextClassifyConfig, model):
+        # essential components
         self.config = config
         self.model = model
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.learning_rate)
-        self.animator = my_ai.utility.AnimatorFactory.get_animator()
+        self.animator = my_ai.utility.get_animator()
+        self.loss_func = torch.nn.CrossEntropyLoss()
+        # important stats
+        self.num_batches = len(self.config.train_dataloader)
+        self.dev_best_loss = float('inf')
+        self.last_improve_point = 0
+        self.now_point = 0
+        self.is_expire = False
+        self.epoch = 0
 
     def start(self):
-        # step1
         self.model.to(self.config.device)
-        metric = my_ai.utility.Accumulator(3)  # Sum of training loss, sum of training accuracy, no. of examples
-        loss = torch.nn.CrossEntropyLoss()
-        timer, num_batches = my_ai.utility.Timer(), len(self.config.train_dataloader)
+        self.animator.prepare(self.num_batches)
 
-        self.animator.line_start(num_batches)
-        # step2
         for epoch in range(self.config.num_epochs):
-            self.model.train()
-            for i, (X, y) in enumerate(self.config.train_dataloader):
-                # step2.1
-                timer.start()
-                self.optimizer.zero_grad()
+            self.epoch = epoch
+            # train
+            is_continue = self.train()
+            if not is_continue:
+                logging.info('Early stop')
+                break
+            # evaluate
+            self.evaluate()
+
+    def train(self):
+        metric = my_ai.utility.Accumulator(3)  # Sum of training loss, sum of training accuracy, no. of examples
+        self.config.train_dataloader.reset()
+        self.model.train()
+
+        for i, (X, y) in enumerate(self.config.train_dataloader):
+            # forward backward
+            self.optimizer.zero_grad()
+            X, y = torch.tensor(X), torch.tensor(y)
+            X, y = X.to(self.config.device), y.to(self.config.device)
+            y_hat = self.model(X)
+            l = self.loss_func(y_hat, y)
+            l.backward()
+            self.optimizer.step()
+            # checkpoint
+            if i % self.config.checkpoint_interval == 0:
+                self.checkpoint()
+            # recording stats
+            with torch.no_grad():
+                metric.add(l * X.shape[0], my_ai.utility.accuracy(y_hat, y), X.shape[0])
+            train_l = metric[0] / metric[2]
+            train_acc = metric[1] / metric[2]
+            self.animator.train_line_append(self.epoch, i, {"train_l": train_l, "train_acc": train_acc})
+            # if early stop
+            if self.epoch >= self.config.count_expire_after and self.is_expire:
+                return False
+
+        return True
+
+    def checkpoint(self):
+        self.now_point = self.now_point + 1
+        dev_loss = self.get_dev_loss()
+        if dev_loss < self.dev_best_loss:
+            self.save()
+            self.last_improve_point = self.now_point
+            self.dev_best_loss = dev_loss
+        else:
+            if (self.now_point - self.last_improve_point) >= self.config.expire_points:
+                self.is_expire = True
+        return self
+
+    def save(self): # TODO
+        torch.save(self.model.state_dict(), self.config.save_path)
+        return self
+
+    def get_dev_loss(self):
+        metric = my_ai.utility.Accumulator(2)  # sum of   loss,number of examples
+        self.model.eval()
+        with torch.no_grad():
+            for X, y in self.config.dev_dataloader:
                 X, y = torch.tensor(X), torch.tensor(y)
                 X, y = X.to(self.config.device), y.to(self.config.device)
                 y_hat = self.model(X)
-                l = loss(y_hat, y)
-                l.backward()
-                self.optimizer.step()
-                timer.stop()
-                # step2.2
-                with torch.no_grad():
-                    metric.add(l * X.shape[0], my_ai.utility.accuracy(y_hat, y), X.shape[0])
-                train_l = metric[0] / metric[2]
-                train_acc = metric[1] / metric[2]
-                self.animator.train_line_append(epoch, i, {"train_l": train_l, "train_acc": train_acc})
-            self.evaluate()
+                l = self.loss_func(y_hat, y)  # average   loss of this batch
+                metric.add(l * X.shape[0], X.shape[0])
+        dev_loss = metric[0] / metric[1]
+        return dev_loss
 
-    def evaluate(self, epoch):
-        metric_eval = my_ai.utility.Accumulator(2)  # No. of correct predictions, no. of predictions
+    def evaluate(self):
+        metric = my_ai.utility.Accumulator(2)  # No. of correct predictions, no. of predictions
         self.model.eval()
         with torch.no_grad():
-            for X, y in self.config.train_dataloader:
+            for X, y in self.config.test_dataloader:
                 X, y = torch.tensor(X), torch.tensor(y)
                 X, y = X.to(self.config.device), y.to(self.config.device)
-                metric_eval.add(my_ai.utility.accuracy(self.model(X), y), y.numel())
-        test_acc = metric_eval[0] / metric_eval[1]
-        self.animator.test_line_append(epoch, {"test_acc": test_acc})
+                y_hat = self.model(X)
+                metric.add(my_ai.utility.accuracy(y_hat, y), y.numel())
+        test_acc = metric[0] / metric[1]
+        self.animator.test_line_append(self.epoch, {"test_acc": test_acc})
+        return self
 
 # endregion

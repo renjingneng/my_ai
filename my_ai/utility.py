@@ -12,7 +12,7 @@ import visdom
 # region Animator
 class Animator(ABC):
     @abstractmethod
-    def line_start(self, num_batches): pass
+    def prepare(self, num_batches): pass
 
     @abstractmethod
     def train_line_append(self, epoch, batch, data): pass
@@ -23,12 +23,11 @@ class Animator(ABC):
 
 class AnimatorVisdom(Animator):
     def __init__(self):
-        self.vis = None
+        self.vis = visdom.Visdom()
         self.num_batches = None
 
-    def line_start(self, num_batches):
+    def prepare(self, num_batches):
         self.num_batches = num_batches
-        self.vis = visdom.Visdom()
         self.vis.close(win="train_line")
         self.vis.close(win="test_line")
         self.vis.line(X=[0], Y=[0], win="train_line", name="train_l", update='append')
@@ -64,11 +63,9 @@ class AnimatorVisdom(Animator):
             self.vis.line(X=[epoch + 1], Y=[test_acc], win="test_line", name="test_acc", update='append')
 
 
-class AnimatorFactory:
-    @staticmethod
-    def get_animator(animator_type="visdom"):
-        if animator_type == "visdom":
-            return AnimatorVisdom()
+def get_animator(animator_type="visdom"):
+    if animator_type == "visdom":
+        return AnimatorVisdom()
 
 
 # endregion
@@ -109,33 +106,38 @@ class Timer:
         self.tik = 0
 
     def start(self):
-        """Start the timer."""
         self.tik = time.time()
 
     def stop(self):
-        """Stop the timer and record the time in a list."""
+        now = time.time()
         self.times.append(time.time() - self.tik)
+        self.tik = now
+        return self.times[-1]
+
+    def end(self):
+        self.times.append(time.time() - self.tik)
+        self.tik = 0
         return self.times[-1]
 
     def avg(self):
-        """Return the average time."""
         return sum(self.times) / len(self.times)
 
     def sum(self):
-        """Return the sum of time."""
         return sum(self.times)
 
     def cumsum(self):
-        """Return the accumulated time."""
         return numpy.array(self.times).cumsum().tolist()
 
 
 def accuracy(y_hat, y):
     """Compute the number of correct predictions."""
-    if len(y_hat.shape) > 1:
+    if len(y_hat.shape) == 2:
         y_hat = y_hat.argmax(axis=1)
-    cmp = y_hat.type(y.dtype) == y
-    return float(cmp.type(y.dtype).sum())
+    elif len(y_hat.shape) > 2:
+        raise Exception
+    y = y.type(y_hat.dtype)
+    cmp = y_hat == y
+    return cmp.sum().item()
 
 
 def summary_of_network(net, input_size):
@@ -166,6 +168,8 @@ def cnn_block(num_convs, in_channels, out_channels):
         in_channels = out_channels
     layers.append(torch.nn.MaxPool2d(kernel_size=2, stride=2))
     return torch.nn.Sequential(*layers)
+
+
 # endregion
 
 # region Train
@@ -198,8 +202,8 @@ def train_1(net, train_iter, test_iter, num_epochs, lr):
     # vis.line(X=[0], Y=[train_l], win="lineset", name="train_l", update='append')
     # vis.line(X=[0], Y=[train_acc], win="lineset", name="train_acc", update='append')
     # vis.line(X=[0], Y=[test_acc], win="lineset", name="test_acc", update='append')
-    animator = AnimatorFactory.get_animator()
-    animator.line_start(num_batches)
+    animator = get_animator()
+    animator.prepare(num_batches)
     # step2
     for epoch in range(num_epochs):
         net.train()
@@ -256,6 +260,5 @@ def save_json_file(obj, file_path):
 def load_json_file(file_path):
     with open(file_path, encoding="utf8") as f:
         return json.load(f)
-
 
 # endregion
