@@ -9,7 +9,8 @@ class TextCNN(nn.Module):
     def __init__(self, config: my_ai.pipeline.TextClassifyConfig):
         super(TextCNN, self).__init__()
         if config.is_pretrained == 1:
-            self.embedding = nn.Embedding.from_pretrained(config.embedding.get_all_representation(), freeze=False)
+            pretrained_embedding = torch.tensor(config.embedding.get_all_representation())
+            self.embedding = nn.Embedding.from_pretrained(pretrained_embedding, freeze=True)
         else:
             self.embedding = nn.Embedding(config.vocab.get_len(), config.embedding.len)
         self.convs = nn.ModuleList(

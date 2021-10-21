@@ -4,7 +4,6 @@ from pprint import pprint
 import logging
 
 import torch
-import torch.utils.data
 import numpy as np
 import pickle as pkl
 
@@ -26,7 +25,7 @@ class ConfigFactory:
             default_params = ConfigFactory.get_text_classify_params(model_name, files_path)
             default_other_params = {
                 'filter_sizes': (2, 3, 4),
-                'total_filters': 256
+                'num_filters': 256
             }
             params = ConfigFactory.fill_params(params, default_params)
             other_params = ConfigFactory.fill_params(other_params, default_other_params)
@@ -103,9 +102,9 @@ class TextClassifyConfig:
         self.tokenizer: Tokenizer = None
         self.vocab: Vocab = None
         self.embedding: Embedding = None
-        self.train_dataloader: torch.utils.data.DataLoader = None
-        self.dev_dataloader: torch.utils.data.DataLoader = None
-        self.test_dataloader: torch.utils.data.DataLoader = None
+        self.train_dataloader: Dataloader = None
+        self.dev_dataloader: Dataloader = None
+        self.test_dataloader: Dataloader = None
         # other_params
         self.other_params = other_params
 
@@ -418,11 +417,19 @@ class Dataloader:
 class ModelFactory:
     @staticmethod
     def get_model(config):
-        model = None
+        logging.info('--Begin  model.')
+        logging.debug(f'\r\n\
+                   config.model_name:{config.model_name}\
+                ')
         if config.model_name == 'TextCNN':
+            import my_ai.model.text_classify
+            logging.debug(f'\r\n\
+                       config.is_pretrained:{config.is_pretrained}\
+                    ')
             model = my_ai.model.text_classify.TextCNN(config)
         else:
             raise Exception("unrecognized model_name!")
+        logging.info('--Finished  model.')
         return model
 
 

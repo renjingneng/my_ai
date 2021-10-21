@@ -33,7 +33,7 @@ def train_textCNN():
     preprocessor = PreprocessorFactory.get_preprocessor(conf)
     preprocessor.preprocess()
     # step3.model
-    # model = ModelFactory.get_model(conf)
+    model = ModelFactory.get_model(conf)
     # step4.train
     # trainer = TrainerFactory.get_trainer(conf, model)
     # trainer.start()
