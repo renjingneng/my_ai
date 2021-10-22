@@ -154,22 +154,23 @@ class TextClassifyPreprocessor:
             self.config.vocab.load_vocab()
         logging.info('--Finished vocab.')
         # embedding
-        logging.info('--Begin  embedding.')
-        logging.debug(f'\r\n\
-           config.trimmed_embed_path:{self.config.trimmed_embed_path}\r\n\
-           config.original_embed_path:{self.config.original_embed_path}\
-        ')
-        self.config.embedding = self._get_embedding()
-        if self.config.is_retrim_embedding == 1:
-            logging.info('Start building  embedding.')
-            self.config.embedding.build_trimmed()
-        else:
-            logging.info('Start reloading  embedding.')
-            self.config.embedding.load_trimmed()
-        logging.debug(f'\r\n\
-           left index with its token:{self.config.embedding.get_left_index_token()}\
-        ')
-        logging.info('--Finished  embedding.')
+        if self.config.is_pretrained == 1:
+            logging.info('--Begin pretrained  embedding.')
+            logging.debug(f'\r\n\
+               config.trimmed_embed_path:{self.config.trimmed_embed_path}\r\n\
+               config.original_embed_path:{self.config.original_embed_path}\
+            ')
+            self.config.embedding = self._get_embedding()
+            if self.config.is_retrim_embedding == 1:
+                logging.info('Start building pretrained  embedding.')
+                self.config.embedding.build_trimmed()
+            else:
+                logging.info('Start reloading pretrained  embedding.')
+                self.config.embedding.load_trimmed()
+            logging.debug(f'\r\n\
+               residual index with its token:{self.config.embedding.get_residual_index_token()}\
+            ')
+            logging.info('--Finished pretrained  embedding.')
         # dataloader
         logging.info('--Begin  dataloader.')
         logging.debug(f'\r\n\
@@ -281,9 +282,9 @@ class Embedding:
         self.original_path = original_path
         self.trimmed_path = trimmed_path
         self.vocab = vocab
-        self.representation = None
-        self.len = None
-        self.left_index = []
+        self.representation = None  # array  of trimmed Embedding (num of  vocab ,len of Embedding for one token)
+        self.len = None  # len of Embedding for one token
+        self.residual_index = []  # token index which is not found in original pretrained Embedding
         # [PAD, UKN]
         self.special_index = [0, 1]
 
@@ -320,15 +321,15 @@ class Embedding:
             else:
                 if (self.representation[vocab_index] == zero).all():
                     self.representation[vocab_index] = self._get_other_embedding()
-                    self.left_index.append(vocab_index)
+                    self.residual_index.append(vocab_index)
 
-        np.savez_compressed(self.trimmed_path, representation=self.representation, left_index=self.left_index,
+        np.savez_compressed(self.trimmed_path, representation=self.representation, residual_index=self.residual_index,
                             special_index=self.special_index)
 
     def load_trimmed(self):
         trimmed = np.load(self.trimmed_path)
         self.representation = trimmed['representation']
-        self.left_index = trimmed['left_index']
+        self.residual_index = trimmed['residual_index']
         self.special_index = trimmed['special_index']
         self.len = self.representation.shape[1]
 
@@ -338,8 +339,8 @@ class Embedding:
     def get_all_representation(self):
         return self.representation
 
-    def get_left_index_token(self):
-        return [(index, self.vocab.to_token(index)) for index in self.left_index]
+    def get_residual_index_token(self):
+        return [(index, self.vocab.to_token(index)) for index in self.residual_index]
 
     def _get_pad_embedding(self):
         result = np.random.rand(self.len)
@@ -546,7 +547,7 @@ class TextClassifyTrainer:
                 self.is_expire = True
         return self
 
-    def save(self): # TODO
+    def save(self):  # TODO
         torch.save(self.model.state_dict(), self.config.save_path)
         return self
 

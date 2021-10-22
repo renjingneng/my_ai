@@ -12,7 +12,7 @@ class TextCNN(nn.Module):
             pretrained_embedding = torch.tensor(config.embedding.get_all_representation())
             self.embedding = nn.Embedding.from_pretrained(pretrained_embedding, freeze=True)
         else:
-            self.embedding = nn.Embedding(config.vocab.get_len(), config.embedding.len)
+            self.embedding = nn.Embedding(config.vocab.get_len(), config.embedding_length)
         self.convs = nn.ModuleList(
             [nn.Conv2d(1, config.other_params['num_filters'], (k, config.embedding.len)) for k in
              config.other_params['filter_sizes']])
