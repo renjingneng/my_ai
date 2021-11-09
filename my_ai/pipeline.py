@@ -320,7 +320,7 @@ class Embedding:
                 self.representation[vocab_index] = self._get_ukn_embedding()
             else:
                 if (self.representation[vocab_index] == zero).all():
-                    self.representation[vocab_index] = self._get_other_embedding()
+                    self.representation[vocab_index] = self._get_residual_embedding()
                     self.residual_index.append(vocab_index)
 
         np.savez_compressed(self.trimmed_path, representation=self.representation, residual_index=self.residual_index,
@@ -350,7 +350,7 @@ class Embedding:
         result = np.random.rand(self.len)
         return result
 
-    def _get_other_embedding(self):
+    def _get_residual_embedding(self):
         result = np.random.rand(self.len)
         return result
 
