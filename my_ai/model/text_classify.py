@@ -26,8 +26,7 @@ class TextCNN(nn.Module):
         return x
 
     def forward(self, x):
-        out = self.embedding(x[0])
-        out = out.unsqueeze(1)
+        out = self.embedding(x)
         out = torch.cat([self.conv_and_pool(out, conv) for conv in self.convs], 1)
         out = self.dropout(out)
         out = self.fc(out)
