@@ -15,14 +15,14 @@ UKN, PAD = '<ukn>', '<pad>'
 # region Config
 class ConfigFactory:
     @staticmethod
-    def get_config(model_name, files_path, params=None, other_params=None):
-        if model_name is None:
+    def get_config(params, other_params=None):
+        if params.get('model_name', None) is None:
             raise Exception("model_name is None!")
-        if files_path is None:
+        if params.get('files_path', None) is None:
             raise Exception("files_path is None!")
 
-        if model_name == "TextCNN":
-            default_params = ConfigFactory.get_text_classify_params(model_name, files_path)
+        if params['model_name'] == "TextCNN":
+            default_params = ConfigFactory.get_text_classify_params(params['model_name'], params['files_path'])
             default_other_params = {
                 'filter_sizes': (2, 3, 4),
                 'num_filters': 256
@@ -51,13 +51,13 @@ class ConfigFactory:
             'files_path': files_path,
             'device': torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
             'is_char_segment': 1,
-            'min_freq': 2,
+            'min_freq': 1,
             'is_revocab': 1,
-            'is_retrim_embedding': 0,
+            'is_retrim_embedding': 1,
             'is_pretrained': 1,
             'embedding_length': 300,
             'dropout': 0.5,
-            'num_epochs': 20,
+            'num_epochs': 5,
             'batch_size': 128,
             'text_length': 30,
             'learning_rate': 1e-3,
@@ -73,13 +73,13 @@ class TextClassifyConfig:
         # files path
         self.files_path = params['files_path']
         self.train_path = params['files_path'] + '/train.txt'
+        self.class_path = params['files_path'] + '/class.txt'
         self.dev_path = params['files_path'] + '/dev.txt'
         self.test_path = params['files_path'] + '/test.txt'
         self.vocab_path = params['files_path'] + '/vocab.pkl'
         self.save_path = params['files_path'] + '/saved_dict.ckpt'
         self.trimmed_embed_path = params['files_path'] + '/trimmed_embedding.npz'
         self.original_embed_path = params['files_path'] + '/original_embedding'
-        self.log_path = params['files_path'] + '/log'
 
         # basic info
         self.model_name = params['model_name']
@@ -98,6 +98,9 @@ class TextClassifyConfig:
         self.count_expire_after = params['count_expire_after']
         self.expire_points = params['expire_points']
         self.checkpoint_interval = params['checkpoint_interval']
+
+        self.config.class_list = [x.strip() for x in open(self.class_path, encoding='utf-8').readlines()]
+        self.config.num_classes = len(self.config.class_list)
 
         self.class_list = None
         self.num_classes = None
@@ -132,20 +135,16 @@ class TextClassifyPreprocessor:
         self.config = config
 
     def preprocess(self):
-        # preprocess config
-        self.config.class_list = [x.strip() for x in open(
-            self.config.files_path + '/class.txt', encoding='utf-8').readlines()]
-        self.config.num_classes = len(self.config.class_list)
         # tokenizer
         logging.info('--Begin  tokenizer.')
         logging.debug(f'\r\n\
            config.is_char_segment:{self.config.is_char_segment}\
         ')
-        self.config.tokenizer = self._get_tokenizer()
+        self.config.tokenizer = Tokenizer(self.config.is_char_segment)
         logging.info('--Finished  tokenizer.')
         # vocab
         logging.info('--Begin  vocab.')
-        self.config.vocab = self._get_vocab()
+        self.config.vocab = Vocab(self.config.train_path, self.config.vocab_path, self.config.tokenizer, self.config.min_freq)
         if self.config.is_revocab == 1:
             logging.info('Start building vocab.')
             self.config.vocab.build_vocab_of_sentences()
@@ -160,7 +159,7 @@ class TextClassifyPreprocessor:
                config.trimmed_embed_path:{self.config.trimmed_embed_path}\r\n\
                config.original_embed_path:{self.config.original_embed_path}\
             ')
-            self.config.embedding = self._get_embedding()
+            self.config.embedding = Embedding(self.config.trimmed_embed_path, self.config.original_embed_path, self.config.vocab)
             if self.config.is_retrim_embedding == 1:
                 logging.info('Start building pretrained  embedding.')
                 self.config.embedding.build_trimmed()
@@ -192,18 +191,6 @@ class TextClassifyPreprocessor:
                                            self.config.tokenizer)
         test_dataloader = Dataloader(test_dataset, self.config.batch_size)
         return train_dataloader, dev_dataloader, test_dataloader
-
-    def _get_tokenizer(self):
-        tokenizer = Tokenizer(self.config.is_char_segment)
-        return tokenizer
-
-    def _get_vocab(self):
-        vocab = Vocab(self.config.train_path, self.config.vocab_path, self.config.tokenizer, self.config.min_freq)
-        return vocab
-
-    def _get_embedding(self):
-        embedding = Embedding(self.config.trimmed_embed_path, self.config.original_embed_path, self.config.vocab)
-        return embedding
 
 
 class Tokenizer:

@@ -2,6 +2,7 @@ import sys
 import os
 import random
 import logging
+import configparser
 
 import numpy as np
 import torch
@@ -22,14 +23,32 @@ def makesure_reproducible():
     torch.use_deterministic_algorithms(True)
 
 
+def get_params(conf_path):
+    cf = configparser.ConfigParser()
+    cf.read(conf_path)
+    params_items = cf.items("params")
+    if len(params_items) == 0:
+        params = None
+    else:
+        params = {}
+        for key, val in params_items:
+            params[key] = val
+    other_params_items = cf.items("other_params")
+    if len(other_params_items) == 0:
+        other_params = None
+    else:
+        other_params = {}
+        for key, val in other_params_items:
+            other_params[key] = val
+    return params, other_params
+
+
 def train_textCNN():
     # step1.input
-    model_name = 'TextCNN'
-    files_path = 'data/text_classify'
-    params = {'is_revocab': 0, 'is_retrim_embedding': 0, 'min_freq': 1}
+    params, other_params = get_params('data/text_classify/config.ini')
     logging.basicConfig(level=logging.DEBUG, format='%(levelname)s-%(asctime)s-%(message)s')
     # step2.conf
-    conf = ConfigFactory.get_config(model_name, files_path, params)
+    conf = ConfigFactory.get_config(params, other_params)
     preprocessor = PreprocessorFactory.get_preprocessor(conf)
     preprocessor.preprocess()
     # step3.model
