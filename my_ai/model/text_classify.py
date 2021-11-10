@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import my_ai.pipeline
+import my_ai.model
 
 
 class TextCNN(nn.Module):
@@ -10,7 +11,8 @@ class TextCNN(nn.Module):
         super(TextCNN, self).__init__()
         if config.is_pretrained == 1:
             pretrained_embedding = torch.tensor(config.embedding.get_all_representation())
-            self.embedding = nn.Embedding.from_pretrained(pretrained_embedding, freeze=True)
+            residual_index = torch.tensor(config.embedding.get_residual_index())
+            self.embedding = my_ai.model.ElasticEmbedding(pretrained_embedding, residual_index)
         else:
             self.embedding = nn.Embedding(config.vocab.get_len(), config.embedding_length)
         self.convs = nn.ModuleList(

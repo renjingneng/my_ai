@@ -339,6 +339,9 @@ class Embedding:
     def get_all_representation(self):
         return self.representation
 
+    def get_residual_index(self):
+        return self.residual_index
+
     def get_residual_index_token(self):
         return [(index, self.vocab.to_token(index)) for index in self.residual_index]
 
@@ -547,7 +550,7 @@ class TextClassifyTrainer:
                 self.is_expire = True
         return self
 
-    def save(self):  # TODO
+    def save(self):
         torch.save(self.model.state_dict(), self.config.save_path)
         return self
 
