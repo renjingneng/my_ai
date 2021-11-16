@@ -1,35 +1,52 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn
+import torch.nn.functional
 
 import my_ai.pipeline
 import my_ai.model
 
 
-class TextCNN(nn.Module):
+class TextCNN(torch.nn.Module):
+    """ok
+    """
+
     def __init__(self, config: my_ai.pipeline.TextClassifyConfig):
         super(TextCNN, self).__init__()
-        if config.is_pretrained == 1:
-            pretrained_embedding = torch.tensor(config.embedding.get_all_representation())
-            residual_index = torch.tensor(config.embedding.get_residual_index())
+        num_filters = config.other_params['num_filters']
+        filter_sizes = config.other_params['filter_sizes']
+
+        if config.is_pretrained:
+            pretrained_embedding = config.embedding.get_all_representation()
+            residual_index = config.embedding.get_residual_index()
             self.embedding = my_ai.model.ElasticEmbedding(pretrained_embedding, residual_index)
         else:
-            self.embedding = nn.Embedding(config.vocab.get_len(), config.embedding_length)
-        self.convs = nn.ModuleList(
-            [nn.Conv2d(1, config.other_params['num_filters'], (k, config.embedding.len)) for k in
-             config.other_params['filter_sizes']])
-        self.dropout = nn.Dropout(config.dropout)
-        self.fc = nn.Linear(config.other_params['num_filters'] * len(config.other_params['filter_sizes']),
-                            config.num_classes)
+            self.embedding = torch.nn.Embedding(config.vocab.get_len(), config.embedding_length)
 
-    def conv_and_pool(self, x, conv):
-        x = F.relu(conv(x)).squeeze(3)
-        x = F.max_pool1d(x, x.size(2)).squeeze(2)
-        return x
+        self.convs = torch.nn.ModuleList(
+            [torch.nn.Conv2d(1, num_filters, (k, config.embedding_length)) for k in
+             filter_sizes])
+
+        self.dropout = torch.nn.Dropout(config.dropout)
+
+        self.fc = torch.nn.Linear(num_filters * len(filter_sizes),
+                                  config.num_classes)
 
     def forward(self, x):
+        # [batch_size, seq_len] => [batch_size, seq_len, embed_size]
         out = self.embedding(x)
-        out = torch.cat([self.conv_and_pool(out, conv) for conv in self.convs], 1)
-        out = self.dropout(out)
-        out = self.fc(out)
-        return out
+        # [batch_size, seq_len, embed_size] => [batch_size, 1, seq_len, embed_size]
+        out = out.unsqueeze(1)
+        # [batch_size, 1, seq_len, embed_size] => [batch_size, 100, seq_len-1 , 1] => [batch_size, 100, seq_len-1]
+        # [batch_size, 1, seq_len, embed_size] => [batch_size, 100, seq_len-2 , 1] => [batch_size, 100, seq_len-2]
+        # ...
+        list1 = [torch.nn.functional.relu(conv(out)).squeeze(3) for conv in self.convs]
+        # [batch_size, 100, seq_len-1] =>[batch_size, 100, 1] => [batch_size, 100]
+        # [batch_size, 100, seq_len-2] =>[batch_size, 100, 1] => [batch_size, 100]
+        # ...
+        list2 = [torch.nn.functional.max_pool1d(item1, item1.size(2)).squeeze(2) for item1 in list1]
+        # all => [batch_size, 300]
+        pack = torch.cat(list2, 1)
+        pack = self.dropout(pack)
+        # [batch_size, 300]=>[batch_size, num_class]
+        result = self.fc(pack)
+        return result

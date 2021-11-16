@@ -1,7 +1,6 @@
 import math
 import logging
 import pprint
-import sys
 from typing import Union
 
 import torch
@@ -81,8 +80,6 @@ class TextClassifyConfig:
         self.class_list = [x.strip() for x in open(self.class_path, encoding='utf-8').readlines()]
         self.num_classes = len(self.class_list)
 
-        self.class_list = None
-        self.num_classes = None
         self.tokenizer: Tokenizer = None
         self.vocab: Vocab = None
         self.embedding: Embedding = None
@@ -359,10 +356,10 @@ class Embedding:
     def get_representation_by_index(self, index: int):
         return self.representation[index]
 
-    def get_all_representation(self):
+    def get_all_representation(self) -> numpy.ndarray:
         return self.representation
 
-    def get_residual_index(self):
+    def get_residual_index(self) -> list:
         return self.residual_index
 
     def get_residual_index_token(self):
@@ -476,6 +473,9 @@ class Dataloader:
 
 # region Model
 class ModelFactory:
+    """ok
+    """
+
     @staticmethod
     def get_model(config):
         logging.info('--Begin  model.')
