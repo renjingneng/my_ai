@@ -1,74 +1,53 @@
-import os
 import math
-from pprint import pprint
 import logging
+import pprint
+import sys
+from typing import Union
 
 import torch
-import numpy as np
-import pickle as pkl
+import numpy
+import pickle
 
 import my_ai.utility
 
 UKN, PAD = '<ukn>', '<pad>'
 
+"""
+different types and related models:
+text_classify - TextCNN
+pic_classify -
+text_entity_extract -
+"""
+
 
 # region Config
-class ConfigFactory:
-    @staticmethod
-    def get_config(params, other_params=None):
-        if params.get('model_name', None) is None:
-            raise Exception("model_name is None!")
-        if params.get('files_path', None) is None:
-            raise Exception("files_path is None!")
-
-        if params['model_name'] == "TextCNN":
-            default_params = ConfigFactory.get_text_classify_params(params['model_name'], params['files_path'])
-            default_other_params = {
-                'filter_sizes': (2, 3, 4),
-                'num_filters': 256
-            }
-            params = ConfigFactory.fill_params(params, default_params)
-            other_params = ConfigFactory.fill_params(other_params, default_other_params)
-            config = TextClassifyConfig(params, other_params)
-        else:
-            raise Exception("unrecognized model_name!")
-        return config
+class TextClassifyConfig:
+    """ok
+    """
 
     @staticmethod
-    def fill_params(params, default_params):
-        if params is None:
-            params = default_params
-        else:
-            for key in default_params:
-                if params.get(key) is None:
-                    params[key] = default_params[key]
-        return params
-
-    @staticmethod
-    def get_text_classify_params(model_name, files_path):
+    def get_text_classify_params(model_name: str, files_path: str) -> dict:
         params = {
             'model_name': model_name,
             'files_path': files_path,
             'device': torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
-            'is_char_segment': 1,
+            'is_char_segment': True,
             'min_freq': 1,
-            'is_revocab': 1,
-            'is_retrim_embedding': 1,
-            'is_pretrained': 1,
+            'is_revocab': True,
+            'is_retrim_embedding': True,
+            'is_pretrained': True,
             'embedding_length': 300,
             'dropout': 0.5,
             'num_epochs': 5,
             'batch_size': 128,
             'text_length': 30,
-            'learning_rate': 1e-3,
+            'learning_rate': 0.003,
             'count_expire_after': 1,  # after how many epochs begin counting expire
             'expire_points': 10,  # early drop after {expire_points} checkpoints without improvement
             'checkpoint_interval': 20,  # check stats after training {checkpoint_interval} batches
         }
         return params
 
-
-class TextClassifyConfig:
     def __init__(self, params: dict, other_params: dict):
         # files path
         self.files_path = params['files_path']
@@ -77,7 +56,7 @@ class TextClassifyConfig:
         self.dev_path = params['files_path'] + '/dev.txt'
         self.test_path = params['files_path'] + '/test.txt'
         self.vocab_path = params['files_path'] + '/vocab.pkl'
-        self.save_path = params['files_path'] + '/saved_dict.ckpt'
+        self.model_save_path = params['files_path'] + '/model_save_path.ckpt'
         self.trimmed_embed_path = params['files_path'] + '/trimmed_embedding.npz'
         self.original_embed_path = params['files_path'] + '/original_embedding'
 
@@ -99,8 +78,8 @@ class TextClassifyConfig:
         self.expire_points = params['expire_points']
         self.checkpoint_interval = params['checkpoint_interval']
 
-        self.config.class_list = [x.strip() for x in open(self.class_path, encoding='utf-8').readlines()]
-        self.config.num_classes = len(self.config.class_list)
+        self.class_list = [x.strip() for x in open(self.class_path, encoding='utf-8').readlines()]
+        self.num_classes = len(self.class_list)
 
         self.class_list = None
         self.num_classes = None
@@ -114,23 +93,52 @@ class TextClassifyConfig:
         self.other_params = other_params
 
     def show(self):
-        pprint(vars(self))
+        pprint.pprint(vars(self))
+
+
+class ConfigFactory:
+    """ok
+    """
+
+    @staticmethod
+    def get_config(params: dict, other_params: dict = None) -> Union[TextClassifyConfig]:
+        if params.get('model_name', None) is None:
+            raise Exception("model_name is None!")
+        if params.get('files_path', None) is None:
+            raise Exception("files_path is None!")
+
+        if params['model_name'] == "TextCNN":
+            default_params = TextClassifyConfig.get_text_classify_params(params['model_name'], params['files_path'])
+            default_other_params = {
+                'filter_sizes': (2, 3, 4),
+                'num_filters': 256
+            }
+            params = ConfigFactory._fill_params(params, default_params)
+            other_params = ConfigFactory._fill_params(other_params, default_other_params)
+            config = TextClassifyConfig(params, other_params)
+        else:
+            raise Exception("unrecognized model_name!")
+        return config
+
+    @staticmethod
+    def _fill_params(params: dict, default_params: dict) -> dict:
+        if params is None:
+            params = default_params
+        else:
+            for key in default_params:
+                if params.get(key) is None:
+                    params[key] = default_params[key]
+        return params
 
 
 # endregion
 
 # region Preprocessor
-class PreprocessorFactory:
-    @staticmethod
-    def get_preprocessor(config):
-        if config.model_name == 'TextCNN':
-            preprocessor = TextClassifyPreprocessor(config)
-        else:
-            raise Exception("unrecognized model_name!")
-        return preprocessor
-
 
 class TextClassifyPreprocessor:
+    """ok
+    """
+
     def __init__(self, config: TextClassifyConfig):
         self.config = config
 
@@ -144,8 +152,14 @@ class TextClassifyPreprocessor:
         logging.info('--Finished  tokenizer.')
         # vocab
         logging.info('--Begin  vocab.')
-        self.config.vocab = Vocab(self.config.train_path, self.config.vocab_path, self.config.tokenizer, self.config.min_freq)
-        if self.config.is_revocab == 1:
+        logging.debug(f'\r\n\
+           config.train_path:{self.config.train_path}\r\n\
+           config.vocab_path:{self.config.vocab_path}\r\n\
+           config.min_freq:{self.config.min_freq}\
+        ')
+        self.config.vocab = Vocab(self.config.train_path, self.config.vocab_path, self.config.tokenizer,
+                                  self.config.min_freq)
+        if self.config.is_revocab:
             logging.info('Start building vocab.')
             self.config.vocab.build_vocab_of_sentences()
         else:
@@ -153,14 +167,15 @@ class TextClassifyPreprocessor:
             self.config.vocab.load_vocab()
         logging.info('--Finished vocab.')
         # embedding
-        if self.config.is_pretrained == 1:
+        if self.config.is_pretrained:
             logging.info('--Begin pretrained  embedding.')
             logging.debug(f'\r\n\
                config.trimmed_embed_path:{self.config.trimmed_embed_path}\r\n\
                config.original_embed_path:{self.config.original_embed_path}\
             ')
-            self.config.embedding = Embedding(self.config.trimmed_embed_path, self.config.original_embed_path, self.config.vocab)
-            if self.config.is_retrim_embedding == 1:
+            self.config.embedding = Embedding(self.config.trimmed_embed_path, self.config.original_embed_path,
+                                              self.config.vocab)
+            if self.config.is_retrim_embedding:
                 logging.info('Start building pretrained  embedding.')
                 self.config.embedding.build_trimmed()
             else:
@@ -193,27 +208,46 @@ class TextClassifyPreprocessor:
         return train_dataloader, dev_dataloader, test_dataloader
 
 
+class PreprocessorFactory:
+    """ok
+    """
+
+    @staticmethod
+    def get_preprocessor(config: Union[TextClassifyConfig]) -> Union[TextClassifyPreprocessor]:
+        if config.model_name == 'TextCNN':
+            preprocessor = TextClassifyPreprocessor(config)
+        else:
+            raise Exception("unrecognized model_name!")
+        return preprocessor
+
+
 class Tokenizer:
-    def __init__(self, is_char_segment):
+    """ok
+    """
+
+    def __init__(self, is_char_segment: bool):
         self.is_char_segment = is_char_segment
 
-    def tokenize(self, text):
+    def tokenize(self, text: str) -> list:
         if self.is_char_segment:
             return self.tokenize_by_char(text)
         else:
             return self.tokenize_by_word(text)
 
-    def tokenize_by_char(self, text):
+    def tokenize_by_char(self, text: str) -> list:
         result = [char for char in text]
         return result
 
-    def tokenize_by_word(self, text):
+    def tokenize_by_word(self, text: str) -> list:
         result = text.split(' ')
         return result
 
 
 class Vocab:
-    def __init__(self, train_path, vocab_path, tokenizer: Tokenizer, min_freq=2):
+    """ok
+    """
+
+    def __init__(self, train_path: str, vocab_path: str, tokenizer: Tokenizer, min_freq: int = 2):
         self.train_path = train_path
         self.vocab_path = vocab_path
         self.tokenizer = tokenizer
@@ -241,31 +275,34 @@ class Vocab:
                 self.token_to_idx[key] = i
                 i = i + 1
 
-        pkl.dump(self.idx_to_token, open(self.vocab_path, 'wb'))
+        pickle.dump(self.idx_to_token, open(self.vocab_path, 'wb'))
 
     def load_vocab(self):
-        self.idx_to_token = pkl.load(open(self.vocab_path, 'rb'))
+        self.idx_to_token = pickle.load(open(self.vocab_path, 'rb'))
         self.token_to_idx = {}
         for idx, token in enumerate(self.idx_to_token):
             self.token_to_idx[token] = idx
 
-    def get_len(self):
+    def get_len(self) -> int:
         return len(self.idx_to_token)
+
+    def to_token(self, index: int) -> str:
+        if index < 0 or (index + 1) > self.get_len():
+            return None
+        return self.idx_to_token[index]
+
+    def to_index(self, token: str) -> int:
+        return self.token_to_idx.get(token, None)
 
     def __len__(self):
         return len(self.idx_to_token)
 
-    def to_token(self, index):
-        return self.idx_to_token[index]
-
-    def to_index(self, token):
-        if token == PAD or token == UKN:
-            return 1
-        return self.token_to_idx.get(token, 1)
-
 
 class Embedding:
-    def __init__(self, trimmed_path: str, original_path: str = '', vocab: Vocab = None):
+    """ok
+    """
+
+    def __init__(self, trimmed_path: str, original_path: str, vocab: Vocab):
         self.original_path = original_path
         self.trimmed_path = trimmed_path
         self.vocab = vocab
@@ -284,22 +321,22 @@ class Embedding:
             elems = f.readline().strip().split()
             self.len = len(elems[1:])
         # representation of embedding
-        self.representation = np.zeros((self.vocab.get_len(), self.len))
+        self.representation = numpy.zeros(shape=(self.vocab.get_len(), self.len))
 
         with open(self.original_path, 'r', encoding='UTF-8') as f:
             if original_has_header:
                 f.readline()
             for line in f:
                 elems = line.strip().split()
-                vocab_index = self.vocab.to_index(elems[0])
-                if vocab_index == -1:
-                    continue
                 # if original embedding has PAD or UKN ,just abandon it bc it may has diff meaning
                 if elems[0] == PAD or elems[0] == UKN:
                     continue
+                vocab_index = self.vocab.to_index(elems[0])
+                if vocab_index is None:
+                    continue
                 self.representation[vocab_index, 0:] = elems[1:]
 
-        zero = np.zeros(self.len)
+        zero = numpy.zeros(self.len)
         for vocab_index in range(self.vocab.get_len()):
             if vocab_index == 0:
                 self.representation[vocab_index] = self._get_pad_embedding()
@@ -310,17 +347,16 @@ class Embedding:
                     self.representation[vocab_index] = self._get_residual_embedding()
                     self.residual_index.append(vocab_index)
 
-        np.savez_compressed(self.trimmed_path, representation=self.representation, residual_index=self.residual_index,
-                            special_index=self.special_index)
+        numpy.savez_compressed(self.trimmed_path, representation=self.representation,
+                               residual_index=self.residual_index)
 
     def load_trimmed(self):
-        trimmed = np.load(self.trimmed_path)
+        trimmed = numpy.load(self.trimmed_path)
         self.representation = trimmed['representation']
         self.residual_index = trimmed['residual_index']
-        self.special_index = trimmed['special_index']
         self.len = self.representation.shape[1]
 
-    def get_representation_by_index(self, index):
+    def get_representation_by_index(self, index: int):
         return self.representation[index]
 
     def get_all_representation(self):
@@ -333,21 +369,23 @@ class Embedding:
         return [(index, self.vocab.to_token(index)) for index in self.residual_index]
 
     def _get_pad_embedding(self):
-        result = np.random.rand(self.len)
+        result = numpy.random.rand(self.len)
         return result
 
     def _get_ukn_embedding(self):
-        result = np.random.rand(self.len)
+        result = numpy.random.rand(self.len)
         return result
 
     def _get_residual_embedding(self):
-        result = np.random.rand(self.len)
+        result = numpy.random.rand(self.len)
         return result
 
 
 class TextClassifyDataset:
+    """ok
+    """
 
-    def __init__(self, file_path, text_length, vocab: Vocab, tokenizer: Tokenizer):
+    def __init__(self, file_path: str, text_length: str, vocab: Vocab, tokenizer: Tokenizer):
         self.file_path = file_path
         self.text_length = text_length
         self.vocab = vocab
@@ -394,7 +432,10 @@ class TextClassifyDataset:
 
 
 class Dataloader:
-    def __init__(self, dataset_iterator, batch_size):
+    """ok
+    """
+
+    def __init__(self, dataset_iterator: Union[TextClassifyDataset], batch_size: int):
         self.dataset_iterator = dataset_iterator
         self.batch_size = batch_size
 
@@ -538,7 +579,7 @@ class TextClassifyTrainer:
         return self
 
     def save(self):
-        torch.save(self.model.state_dict(), self.config.save_path)
+        torch.save(self.model.state_dict(), self.config.model_save_path)
         return self
 
     def get_dev_loss(self):

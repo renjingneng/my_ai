@@ -1,5 +1,7 @@
 import time
+import random
 import json
+import configparser
 from abc import ABC, abstractmethod
 
 import torch
@@ -252,6 +254,19 @@ def show_image_grid(imgs, titles):
     matplotlib.pyplot.show()
 
 
+def makesure_reproducible():
+    numpy.random.seed(1)
+    random.seed(1)
+    torch.manual_seed(1)
+    torch.cuda.manual_seed_all(1)
+    torch.use_deterministic_algorithms(True)
+
+
+# endregion
+
+# region File
+
+
 def save_json_file(obj, file_path):
     with open(file_path, "w", encoding="utf8") as f:
         f.write(json.dumps(obj, ensure_ascii=False))
@@ -260,5 +275,52 @@ def save_json_file(obj, file_path):
 def load_json_file(file_path):
     with open(file_path, encoding="utf8") as f:
         return json.load(f)
+
+
+def get_params(conf_path):
+    """Get params from conf_path
+
+    Parameters
+    ----------
+    conf_path : str
+        The file path of configuration ( s.t. format '.ini')
+
+    Returns
+    -------
+    params : list or None
+        basic params
+    other_params : list or None
+        other params
+    """
+
+    def convert_val(val: str):
+        if val == 'False':
+            val = False
+        elif val == 'True':
+            val = True
+        elif val.isdigit():
+            val = int(val)
+        elif val.count('.') == 1:
+            val = float(val)
+
+        return val
+
+    cf = configparser.ConfigParser()
+    cf.read(conf_path)
+    params_items = cf.items("params")  # Return a list of (name, value) tuples for each option in a section
+    if len(params_items) == 0:
+        params = None
+    else:
+        params = {}
+        for key, val in params_items:
+            params[key] = convert_val(val)
+    other_params_items = cf.items("other_params")
+    if len(other_params_items) == 0:
+        other_params = None
+    else:
+        other_params = {}
+        for key, val in other_params_items:
+            other_params[key] = convert_val(val)
+    return params, other_params
 
 # endregion
