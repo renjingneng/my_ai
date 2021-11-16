@@ -412,7 +412,7 @@ class TextClassifyDataset:
             tokens.extend([PAD] * (self.text_length - len(tokens)))
         else:
             tokens = tokens[:self.text_length]
-        return [self.vocab.to_index(token) for token in tokens], label
+        return [self.vocab.to_index(token) for token in tokens], int(label)
 
     def reset(self):
         self.file_iterator = self._get_file_iterator()

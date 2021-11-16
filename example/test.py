@@ -24,7 +24,6 @@ def train_textCNN():
     preprocessor.preprocess()
     # step3.model
     model = ModelFactory.get_model(conf)
-    return
     # step4.train
     trainer = TrainerFactory.get_trainer(conf, model)
     trainer.start()
