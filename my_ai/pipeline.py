@@ -289,7 +289,7 @@ class Vocab:
         return self.idx_to_token[index]
 
     def to_index(self, token: str) -> int:
-        return self.token_to_idx.get(token, None)
+        return self.token_to_idx.get(token, 1) # if token  not found ,consider it as unknown
 
     def __len__(self):
         return len(self.idx_to_token)
@@ -498,17 +498,29 @@ class ModelFactory:
 
 # region Trainer
 class TrainerFactory:
+    """ok
+    """
+
     @staticmethod
     def get_trainer(config, model):
+        logging.info('--Begin  trainer.')
+        logging.debug(f'\r\n\
+                   config.num_epochs:{config.num_epochs}\r\n\
+                   config.count_expire_after:{config.count_expire_after}\r\n\
+                   config.checkpoint_interval:{config.checkpoint_interval}\
+                ')
         if config.model_name == 'TextCNN':
             trainer = TextClassifyTrainer(config, model)
         else:
             raise Exception("unrecognized model_name!")
+        logging.info('--Finished  trainer.')
         return trainer
 
 
 class TextClassifyTrainer:
     def __init__(self, config: TextClassifyConfig, model):
+        """ok
+        """
         # essential components
         self.config = config
         self.model = model
@@ -518,21 +530,20 @@ class TextClassifyTrainer:
         # important stats
         self.num_batches = len(self.config.train_dataloader)
         self.dev_best_loss = float('inf')
-        self.last_improve_point = 0
-        self.now_point = 0
+        self.last_improve_point = -1
+        self.now_point = -1
         self.is_expire = False
-        self.epoch = 0
+        self.epoch = -1
 
     def start(self):
         self.model.to(self.config.device)
         self.animator.prepare(self.num_batches)
 
-        for epoch in range(self.config.num_epochs):
-            self.epoch = epoch
+        for _ in range(self.config.num_epochs):
+            self.epoch = self.epoch + 1
             # train
             is_continue = self.train()
             if not is_continue:
-                logging.info('Early stop')
                 break
             # evaluate
             self.evaluate()
@@ -552,7 +563,8 @@ class TextClassifyTrainer:
             l.backward()
             self.optimizer.step()
             # checkpoint
-            if i % self.config.checkpoint_interval == 0:
+            if i != 0 and i % self.config.checkpoint_interval == 0:
+                self.now_point = self.now_point + 1
                 self.checkpoint()
             # recording stats
             with torch.no_grad():
@@ -560,14 +572,14 @@ class TextClassifyTrainer:
             train_l = metric[0] / metric[2]
             train_acc = metric[1] / metric[2]
             self.animator.train_line_append(self.epoch, i, {"train_l": train_l, "train_acc": train_acc})
-            # if early stop
+            # condition for early stop
             if self.epoch >= self.config.count_expire_after and self.is_expire:
+                self.log_action('Early stop')
                 return False
 
         return True
 
     def checkpoint(self):
-        self.now_point = self.now_point + 1
         dev_loss = self.get_dev_loss()
         if dev_loss < self.dev_best_loss:
             self.save()
@@ -579,7 +591,13 @@ class TextClassifyTrainer:
         return self
 
     def save(self):
+        self.log_action('Save model')
         torch.save(self.model.state_dict(), self.config.model_save_path)
+        return self
+
+    def log_action(self, action: str):
+        action_statement = 'epoch:{} , now_point:{} ,action:{} '.format(self.epoch, self.now_point, action)
+        logging.info(action_statement)
         return self
 
     def get_dev_loss(self):

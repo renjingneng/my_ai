@@ -26,6 +26,7 @@ class TextCNN(torch.nn.Module):
             [torch.nn.Conv2d(1, num_filters, (k, config.embedding_length)) for k in
              filter_sizes])
 
+        self.max_pool_1d_list = [torch.nn.MaxPool1d((config.text_length-k-1)) for k in filter_sizes]
         self.dropout = torch.nn.Dropout(config.dropout)
 
         self.fc = torch.nn.Linear(num_filters * len(filter_sizes),
@@ -43,7 +44,7 @@ class TextCNN(torch.nn.Module):
         # [batch_size, 100, seq_len-1] =>[batch_size, 100, 1] => [batch_size, 100]
         # [batch_size, 100, seq_len-2] =>[batch_size, 100, 1] => [batch_size, 100]
         # ...
-        list2 = [torch.nn.functional.max_pool1d(item1, item1.size(2)).squeeze(2) for item1 in list1]
+        list2 = [self.max_pool_1d_list[idx](item1).squeeze(2) for idx, item1 in enumerate(list1)]
         # all => [batch_size, 300]
         pack = torch.cat(list2, 1)
         pack = self.dropout(pack)
