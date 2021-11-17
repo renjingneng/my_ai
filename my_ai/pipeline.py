@@ -535,6 +535,10 @@ class TextClassifyTrainer:
         self.is_expire = False
         self.epoch = -1
 
+    def load_model(self):
+        self.model.load_state_dict(torch.load(self.config.model_save_path))
+        return self
+
     def start(self):
         self.model.to(self.config.device)
         self.animator.prepare(self.num_batches)
@@ -582,7 +586,7 @@ class TextClassifyTrainer:
     def checkpoint(self):
         dev_loss = self.get_dev_loss()
         if dev_loss < self.dev_best_loss:
-            self.save()
+            self.save_model()
             self.last_improve_point = self.now_point
             self.dev_best_loss = dev_loss
         else:
@@ -590,7 +594,7 @@ class TextClassifyTrainer:
                 self.is_expire = True
         return self
 
-    def save(self):
+    def save_model(self):
         self.log_action('Save model')
         torch.save(self.model.state_dict(), self.config.model_save_path)
         return self
