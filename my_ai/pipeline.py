@@ -1,4 +1,5 @@
 import math
+import sys
 import logging
 import pprint
 from typing import Union
@@ -41,7 +42,7 @@ class TextClassifyConfig:
             'batch_size': 128,
             'text_length': 30,
             'learning_rate': 0.003,
-            'count_expire_after': 1,  # after how many epochs begin counting expire
+            'count_expire_from': 1,  #  counting expire start from {count_expire_from}th epoch
             'expire_points': 10,  # early drop after {expire_points} checkpoints without improvement
             'checkpoint_interval': 20,  # check stats after training {checkpoint_interval} batches
         }
@@ -73,7 +74,7 @@ class TextClassifyConfig:
         self.batch_size = params['batch_size']
         self.text_length = params['text_length']
         self.learning_rate = params['learning_rate']
-        self.count_expire_after = params['count_expire_after']
+        self.count_expire_from = params['count_expire_from']
         self.expire_points = params['expire_points']
         self.checkpoint_interval = params['checkpoint_interval']
 
@@ -506,7 +507,7 @@ class TrainerFactory:
         logging.info('--Begin  trainer.')
         logging.debug(f'\r\n\
                    config.num_epochs:{config.num_epochs}\r\n\
-                   config.count_expire_after:{config.count_expire_after}\r\n\
+                   config.count_expire_from:{config.count_expire_from}\r\n\
                    config.checkpoint_interval:{config.checkpoint_interval}\
                 ')
         if config.model_name == 'TextCNN':
@@ -577,7 +578,7 @@ class TextClassifyTrainer:
             train_acc = metric[1] / metric[2]
             self.animator.train_line_append(self.epoch, i, {"train_l": train_l, "train_acc": train_acc})
             # condition for early stop
-            if self.epoch >= self.config.count_expire_after and self.is_expire:
+            if self.epoch >= self.config.count_expire_from and self.is_expire:
                 self.log_action('Early stop')
                 return False
 
@@ -605,6 +606,7 @@ class TextClassifyTrainer:
         return self
 
     def get_dev_loss(self):
+        self.config.dev_dataloader.reset()
         metric = my_ai.utility.Accumulator(2)  # sum of   loss,number of examples
         self.model.eval()
         with torch.no_grad():
@@ -618,6 +620,7 @@ class TextClassifyTrainer:
         return dev_loss
 
     def evaluate(self):
+        self.config.test_dataloader.reset()
         metric = my_ai.utility.Accumulator(2)  # No. of correct predictions, no. of predictions
         self.model.eval()
         with torch.no_grad():
