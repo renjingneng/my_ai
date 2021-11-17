@@ -26,8 +26,17 @@ def train_textCNN():
     model = ModelFactory.get_model(conf)
     # step4.train
     trainer = TrainerFactory.get_trainer(conf, model)
-    trainer.start()
+    #trainer.start()
+    #88.69%
+    trainer.load_model()
 
+
+
+    text = ['物理学家小明获奖']
+    y_map = ['金融','现实','股票','教育','科学','社会','政治','体育','游戏','娱乐']
+    result = trainer.inference(text)
+    result = [y_map[item] for item in result]
+    print(result)
 
 def predict_textCNN(): pass
 

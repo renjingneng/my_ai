@@ -42,7 +42,7 @@ class TextClassifyConfig:
             'batch_size': 128,
             'text_length': 30,
             'learning_rate': 0.003,
-            'count_expire_from': 1,  #  counting expire start from {count_expire_from}th epoch
+            'count_expire_from': 1,  # counting expire start from {count_expire_from}th epoch
             'expire_points': 10,  # early drop after {expire_points} checkpoints without improvement
             'checkpoint_interval': 20,  # check stats after training {checkpoint_interval} batches
         }
@@ -290,7 +290,7 @@ class Vocab:
         return self.idx_to_token[index]
 
     def to_index(self, token: str) -> int:
-        return self.token_to_idx.get(token, 1) # if token  not found ,consider it as unknown
+        return self.token_to_idx.get(token, 1)  # if token  not found ,consider it as unknown
 
     def __len__(self):
         return len(self.idx_to_token)
@@ -632,5 +632,24 @@ class TextClassifyTrainer:
         test_acc = metric[0] / metric[1]
         self.animator.test_line_append(self.epoch, {"test_acc": test_acc})
         return self
+
+    def inference(self, sentence_list):
+        X = []
+        for sentence in sentence_list:
+            tokens = self.config.tokenizer.tokenize(sentence)
+            if len(tokens) < self.config.text_length:
+                tokens.extend([PAD] * (self.config.text_length - len(tokens)))
+            else:
+                tokens = tokens[:self.config.text_length]
+            indexes = [self.config.vocab.to_index(token) for token in tokens]
+            X.append(indexes)
+
+        self.model.eval()
+        with torch.no_grad():
+            X = torch.tensor(X)
+            X = X.to(self.config.device)
+            y_hat = self.model(X)
+            y_hat = y_hat.argmax(axis=1)
+        return y_hat
 
 # endregion
