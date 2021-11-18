@@ -131,7 +131,7 @@ class Timer:
         return numpy.array(self.times).cumsum().tolist()
 
 
-def accuracy(y_hat, y):
+def accuracy(y_hat: torch.Tensor, y: torch.Tensor) -> int:
     """Compute the number of correct predictions."""
     if len(y_hat.shape) == 2:
         y_hat = y_hat.argmax(axis=1)

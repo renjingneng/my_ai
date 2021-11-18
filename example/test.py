@@ -2,6 +2,9 @@ import sys
 import os
 import logging
 
+import torch
+import torch.nn
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from my_ai.pipeline import ConfigFactory
 from my_ai.pipeline import PreprocessorFactory
@@ -47,7 +50,7 @@ def predict_textCNN():
 
 
 def run():
-    #train_textCNN()
+    # train_textCNN()
     predict_textCNN()
 
 

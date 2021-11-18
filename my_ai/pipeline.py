@@ -604,8 +604,12 @@ class TextClassifyTrainer:
                 self.now_point = self.now_point + 1
                 self.checkpoint()
             # recording stats
-            with torch.no_grad():
-                metric.add(l * X.shape[0], my_ai.utility.accuracy(y_hat, y), X.shape[0])
+            """first get a new tensor detached from computation graph but still has same underlying storage ,
+            so after we need clone a new one
+            """
+            y_hat_clone = y_hat.detach().clone()
+            y_clone = y.detach().clone()
+            metric.add(l.item() * X.shape[0], my_ai.utility.accuracy(y_hat_clone, y_clone), X.shape[0])
             train_l = metric[0] / metric[2]
             train_acc = metric[1] / metric[2]
             self.animator.train_line_append(self.epoch, i, {"train_l": train_l, "train_acc": train_acc})
@@ -647,7 +651,7 @@ class TextClassifyTrainer:
                 X, y = X.to(self.config.device), y.to(self.config.device)
                 y_hat = self.model(X)
                 l = self.loss_func(y_hat, y)  # average   loss of this batch
-                metric.add(l * X.shape[0], X.shape[0])
+                metric.add(l.item() * X.shape[0], X.shape[0])
         dev_loss = metric[0] / metric[1]
         return dev_loss
 
