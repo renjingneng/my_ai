@@ -473,26 +473,62 @@ class Dataloader:
 # endregion
 
 # region Model
-class ModelFactory:
+class ModelManager:
     """ok
     """
 
-    @staticmethod
-    def get_model(config):
+    def __init__(self, config):
+        self.model = None
+        self.model_type = None
+        self.config = config
+
         logging.info('--Begin  model.')
         logging.debug(f'\r\n\
-                   config.model_name:{config.model_name}\
-                ')
-        if config.model_name == 'TextCNN':
+                           config.model_name:{self.config.model_name}\
+                        ')
+        if self.config.model_name == 'TextCNN':
+            self.model_type = 'text_classify'
             import my_ai.model.text_classify
             logging.debug(f'\r\n\
-                       config.is_pretrained:{config.is_pretrained}\
-                    ')
-            model = my_ai.model.text_classify.TextCNN(config)
+                               config.is_pretrained:{self.config.is_pretrained}\
+                            ')
+            self.model = my_ai.model.text_classify.TextCNN(self.config)
         else:
             raise Exception("unrecognized model_name!")
         logging.info('--Finished  model.')
-        return model
+
+    def get_model(self):
+        return self.model
+
+    def get_model_name(self):
+        return self.config.model_name
+
+    def infer(self, data):
+        if self.model_type == 'text_classify':
+            return self.text_classify(data)
+
+    def text_classify(self, sentence_list):
+        X = []
+        for sentence in sentence_list:
+            tokens = self.config.tokenizer.tokenize(sentence)
+            if len(tokens) < self.config.text_length:
+                tokens.extend([PAD] * (self.config.text_length - len(tokens)))
+            else:
+                tokens = tokens[:self.config.text_length]
+            indexes = [self.config.vocab.to_index(token) for token in tokens]
+            X.append(indexes)
+
+        self.model.eval()
+        with torch.no_grad():
+            X = torch.tensor(X)
+            X = X.to(self.config.device)
+            y_hat = self.model(X)
+            y_hat = y_hat.argmax(axis=1)
+        return y_hat
+
+    def load_model(self):
+        self.model.load_state_dict(torch.load(self.config.model_save_path))
+        return self
 
 
 # endregion
@@ -535,10 +571,6 @@ class TextClassifyTrainer:
         self.now_point = -1
         self.is_expire = False
         self.epoch = -1
-
-    def load_model(self):
-        self.model.load_state_dict(torch.load(self.config.model_save_path))
-        return self
 
     def start(self):
         self.model.to(self.config.device)
@@ -632,24 +664,5 @@ class TextClassifyTrainer:
         test_acc = metric[0] / metric[1]
         self.animator.test_line_append(self.epoch, {"test_acc": test_acc})
         return self
-
-    def inference(self, sentence_list):
-        X = []
-        for sentence in sentence_list:
-            tokens = self.config.tokenizer.tokenize(sentence)
-            if len(tokens) < self.config.text_length:
-                tokens.extend([PAD] * (self.config.text_length - len(tokens)))
-            else:
-                tokens = tokens[:self.config.text_length]
-            indexes = [self.config.vocab.to_index(token) for token in tokens]
-            X.append(indexes)
-
-        self.model.eval()
-        with torch.no_grad():
-            X = torch.tensor(X)
-            X = X.to(self.config.device)
-            y_hat = self.model(X)
-            y_hat = y_hat.argmax(axis=1)
-        return y_hat
 
 # endregion
