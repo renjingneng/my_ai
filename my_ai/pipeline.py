@@ -2,11 +2,16 @@ import math
 import sys
 import logging
 import pprint
+import os
+import pickle
 from typing import Union
 
 import torch
 import numpy
-import pickle
+import pandas
+import torchvision.io
+from torch.utils.data import Dataset as TorchDataset
+from torch.utils.data import DataLoader as TorchDataLoader
 
 import my_ai.utility
 
@@ -15,7 +20,7 @@ UKN, PAD = '<ukn>', '<pad>'
 """
 different types and related models:
 text_classify - TextCNN
-pic_classify -
+pic_classify - LeNet
 text_entity_extract -
 """
 
@@ -26,7 +31,7 @@ class TextClassifyConfig:
     """
 
     @staticmethod
-    def get_text_classify_params(model_name: str, files_path: str) -> dict:
+    def get_default_params(model_name: str, files_path: str) -> dict:
         params = {
             'model_name': model_name,
             'files_path': files_path,
@@ -94,19 +99,74 @@ class TextClassifyConfig:
         pprint.pprint(vars(self))
 
 
+class PicClassifyConfig:
+    """ok
+    """
+
+    @staticmethod
+    def get_default_params(model_name: str, files_path: str) -> dict:
+        params = {
+            'model_name': model_name,
+            'files_path': files_path,
+            'device': torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
+            'num_epochs': 5,
+            'batch_size': 128,
+            'learning_rate': 0.003,
+            'count_expire_from': 1,  # counting expire start from {count_expire_from}th epoch
+            'expire_points': 10,  # early drop after {expire_points} checkpoints without improvement
+            'checkpoint_interval': 20,  # check stats after training {checkpoint_interval} batches
+        }
+        return params
+
+    def __init__(self, params: dict, other_params: dict):
+        # files path
+        self.files_path = params['files_path']
+        self.example_path = params['files_path'] + '/example.jpg'
+        self.class_path = params['files_path'] + '/class.txt'
+        self.train_img_dir = params['files_path'] + '/train'
+        self.dev_img_dir = params['files_path'] + '/dev'
+        self.test_img_dir = params['files_path'] + '/test'
+        self.train_annotation_path = params['files_path'] + '/train/annotation.csv'
+        self.dev_annotation_path = params['files_path'] + '/dev/annotation.csv'
+        self.test_annotation_path = params['files_path'] + '/test/annotation.csv'
+        self.model_save_path = params['files_path'] + '/model_save_path.ckpt'
+
+        # basic info
+        self.model_name = params['model_name']
+        self.device = params['device']
+        self.num_epochs = params['num_epochs']
+        self.batch_size = params['batch_size']
+        self.learning_rate = params['learning_rate']
+        self.count_expire_from = params['count_expire_from']
+        self.expire_points = params['expire_points']
+        self.checkpoint_interval = params['checkpoint_interval']
+
+        self.class_list = [x.strip() for x in open(self.class_path, encoding='utf-8').readlines()]
+        self.num_classes = len(self.class_list)
+
+        self.train_dataloader: TorchDataLoader = None
+        self.dev_dataloader: TorchDataLoader = None
+        self.test_dataloader: TorchDataLoader = None
+        # other_params
+        self.other_params = other_params
+
+    def show(self):
+        pprint.pprint(vars(self))
+
+
 class ConfigFactory:
     """ok
     """
 
     @staticmethod
-    def get_config(params: dict, other_params: dict = None) -> Union[TextClassifyConfig]:
+    def get_config(params: dict, other_params: dict = None) -> Union[TextClassifyConfig, PicClassifyConfig]:
         if params.get('model_name', None) is None:
             raise Exception("model_name is None!")
         if params.get('files_path', None) is None:
             raise Exception("files_path is None!")
 
         if params['model_name'] == "TextCNN":
-            default_params = TextClassifyConfig.get_text_classify_params(params['model_name'], params['files_path'])
+            default_params = TextClassifyConfig.get_default_params(params['model_name'], params['files_path'])
             default_other_params = {
                 'filter_sizes': (2, 3, 4),
                 'num_filters': 256
@@ -114,6 +174,12 @@ class ConfigFactory:
             params = ConfigFactory._fill_params(params, default_params)
             other_params = ConfigFactory._fill_params(other_params, default_other_params)
             config = TextClassifyConfig(params, other_params)
+        elif params['model_name'] == "LeNet":
+            default_params = PicClassifyConfig.get_default_params(params['model_name'], params['files_path'])
+            default_other_params = {}
+            params = ConfigFactory._fill_params(params, default_params)
+            other_params = ConfigFactory._fill_params(other_params, default_other_params)
+            config = PicClassifyConfig(params, other_params)
         else:
             raise Exception("unrecognized model_name!")
         return config
@@ -206,14 +272,38 @@ class TextClassifyPreprocessor:
         return train_dataloader, dev_dataloader, test_dataloader
 
 
+class PicClassifyPreprocessor:
+
+    def __init__(self, config: PicClassifyConfig):
+        self.config = config
+
+    def preprocess(self):
+        # dataloader
+        logging.info('--Begin  dataloader.')
+        self.config.train_dataloader, self.config.dev_dataloader, self.config.test_dataloader = self._get_dataloader()
+        logging.info('--Finished  dataloader.')
+        return self
+
+    def _get_dataloader(self):
+        train_dataset = PicClassifyDataset(self.config.train_annotation_path, self.config.train_img_dir)
+        train_dataloader = TorchDataLoader(train_dataset, batch_size=self.config.batch_size)
+        dev_dataset = PicClassifyDataset(self.config.dev_annotation_path, self.config.dev_img_dir)
+        dev_dataloader = TorchDataLoader(dev_dataset, batch_size=self.config.batch_size)
+        test_dataset = PicClassifyDataset(self.config.test_annotation_path, self.config.test_img_dir)
+        test_dataloader = TorchDataLoader(test_dataset, batch_size=self.config.batch_size)
+        return iter(train_dataloader), iter(dev_dataloader), iter(test_dataloader)
+
+
 class PreprocessorFactory:
     """ok
     """
 
     @staticmethod
-    def get_preprocessor(config: Union[TextClassifyConfig]) -> Union[TextClassifyPreprocessor]:
+    def get_preprocessor(config: Union[TextClassifyConfig, PicClassifyConfig]) -> Union[TextClassifyPreprocessor, PicClassifyPreprocessor]:
         if config.model_name == 'TextCNN':
             preprocessor = TextClassifyPreprocessor(config)
+        elif config.model_name == 'LeNet':
+            preprocessor = PicClassifyPreprocessor(config)
         else:
             raise Exception("unrecognized model_name!")
         return preprocessor
@@ -427,6 +517,29 @@ class TextClassifyDataset:
                     break
                 else:
                     yield line
+
+
+class PicClassifyDataset(TorchDataset):
+    def __init__(self, annotations_file: str, img_dir: str, transform=None, target_transform=None):
+        self.img_labels = pandas.read_csv(annotations_file)
+        self.img_dir = img_dir
+        self.transform = transform
+        self.target_transform = target_transform
+
+    def __len__(self):
+        return len(self.img_labels)
+
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
+        image_int = torchvision.io.read_image(img_path)
+        image = torch.empty_like(image_int, dtype=torch.float)
+        image = image_int / 255
+        label = self.img_labels.iloc[idx, 1]
+        if self.transform:
+            image = self.transform(image)
+        if self.target_transform:
+            label = self.target_transform(label)
+        return image, label
 
 
 class Dataloader:
