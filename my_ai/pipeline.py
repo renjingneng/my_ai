@@ -111,6 +111,7 @@ class PicClassifyConfig:
             'files_path': files_path,
             'device': torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
             'is_gray': False,
+            'input_size': (100, 100),
             'num_epochs': 5,
             'batch_size': 128,
             'learning_rate': 0.003,
@@ -118,6 +119,10 @@ class PicClassifyConfig:
             'expire_points': 10,  # early drop after {expire_points} checkpoints without improvement
             'checkpoint_interval': 20,  # check stats after training {checkpoint_interval} batches
         }
+        if model_name == 'LeNet':
+            params['is_gray'] = True
+            params['input_size'] = (30, 30)
+
         return params
 
     def __init__(self, params: dict, other_params: dict):
@@ -136,6 +141,7 @@ class PicClassifyConfig:
         self.model_name = params['model_name']
         self.device = params['device']
         self.is_gray = params['is_gray']
+        self.input_size = params['input_size']
         self.num_epochs = params['num_epochs']
         self.batch_size = params['batch_size']
         self.learning_rate = params['learning_rate']
@@ -349,12 +355,18 @@ class PicClassifyPreprocessor:
         logging.info('--Finished generating annotation file:' + path)
 
     def _get_dataloader(self):
-        train_dataset = PicClassifyDataset(self.config.train_annotation_path, self.config.train_img_dir)
+        train_dataset = PicClassifyDataset(self.config.train_annotation_path, self.config.train_img_dir,
+                                           self.config.input_size)
         train_dataloader = TorchDataLoader(train_dataset, batch_size=self.config.batch_size)
-        dev_dataset = PicClassifyDataset(self.config.dev_annotation_path, self.config.dev_img_dir)
+
+        dev_dataset = PicClassifyDataset(self.config.dev_annotation_path, self.config.dev_img_dir,
+                                         self.config.input_size)
         dev_dataloader = TorchDataLoader(dev_dataset, batch_size=self.config.batch_size)
-        test_dataset = PicClassifyDataset(self.config.test_annotation_path, self.config.test_img_dir)
+
+        test_dataset = PicClassifyDataset(self.config.test_annotation_path, self.config.test_img_dir,
+                                          self.config.input_size)
         test_dataloader = TorchDataLoader(test_dataset, batch_size=self.config.batch_size)
+
         return train_dataloader, dev_dataloader, test_dataloader
 
 
@@ -586,11 +598,10 @@ class TextClassifyDataset:
 
 
 class PicClassifyDataset(TorchDataset):
-    def __init__(self, annotations_file: str, img_dir: str, transform=None, target_transform=None):
+    def __init__(self, annotations_file: str, img_dir: str, input_size: tuple):
         self.img_labels = pandas.read_csv(annotations_file)
         self.img_dir = img_dir
-        self.transform = transform
-        self.target_transform = target_transform
+        self.transform_resize = torchvision.transforms.Resize(input_size)
 
     def __len__(self):
         return len(self.img_labels)
@@ -598,13 +609,10 @@ class PicClassifyDataset(TorchDataset):
     def __getitem__(self, idx):
         img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
         image_int = torchvision.io.read_image(img_path)
+        image_int = self.transform_resize(image_int)
         image = torch.empty_like(image_int, dtype=torch.float)
         image = image_int / 255
         label = self.img_labels.iloc[idx, 1]
-        if self.transform:
-            image = self.transform(image)
-        if self.target_transform:
-            label = self.target_transform(label)
         return image, label
 
 
