@@ -4,6 +4,7 @@ import logging
 import pprint
 import os
 import pickle
+import configparser
 from typing import Union
 
 import torch
@@ -109,7 +110,7 @@ class PicClassifyConfig:
             'model_name': model_name,
             'files_path': files_path,
             'device': torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
-            'is_gray': True,
+            'is_gray': False,
             'num_epochs': 5,
             'batch_size': 128,
             'learning_rate': 0.003,
@@ -160,7 +161,8 @@ class ConfigFactory:
     """
 
     @staticmethod
-    def get_config(params: dict, other_params: dict = None) -> Union[TextClassifyConfig, PicClassifyConfig]:
+    def get_config(conf_path: str) -> Union[TextClassifyConfig, PicClassifyConfig]:
+        params, other_params = ConfigFactory._get_params(conf_path)
         if params.get('model_name', None) is None:
             raise Exception("model_name is None!")
         if params.get('files_path', None) is None:
@@ -194,6 +196,41 @@ class ConfigFactory:
                 if params.get(key) is None:
                     params[key] = default_params[key]
         return params
+
+    @staticmethod
+    def _get_params(conf_path: str):
+        """Get params from conf_path
+        """
+        cf = configparser.ConfigParser()
+        cf.read(conf_path)
+        params_items = cf.items("params")  # Return a list of (name, value) tuples for each option in a section
+        if len(params_items) == 0:
+            params = None
+        else:
+            params = {}
+            for key, val in params_items:
+                params[key] = ConfigFactory._convert_val(val)
+        other_params_items = cf.items("other_params")
+        if len(other_params_items) == 0:
+            other_params = None
+        else:
+            other_params = {}
+            for key, val in other_params_items:
+                other_params[key] = ConfigFactory._convert_val(val)
+        return params, other_params
+
+    @staticmethod
+    def _convert_val(val: str):
+        if val == 'False':
+            val = False
+        elif val == 'True':
+            val = True
+        elif val.isdigit():
+            val = int(val)
+        elif val.count('.') == 1:
+            val = float(val)
+
+        return val
 
 
 # endregion
@@ -276,6 +313,7 @@ class TextClassifyPreprocessor:
 class PicClassifyPreprocessor:
     """ok
     """
+
     def __init__(self, config: PicClassifyConfig):
         self.config = config
 
@@ -618,7 +656,7 @@ class ModelManager:
     """ok
     """
 
-    def __init__(self, config:Union[PicClassifyConfig,TextClassifyConfig]):
+    def __init__(self, config: Union[PicClassifyConfig, TextClassifyConfig]):
         self.model = None
         self.model_type = None
         self.config = config
@@ -648,34 +686,31 @@ class ModelManager:
     def get_model_name(self):
         return self.config.model_name
 
-    def infer(self, data):
-        classify_list = ['text_classify','pic_classify']
+    def infer(self, data: list[str]):
+        self.model.to(self.config.device)
         if self.model_type == 'text_classify':
-            return self.text_classify(data)
+            X = self.get_sentence_tensor(data)
+            result = self.classify(X)
+            return result
         elif self.model_type == 'pic_classify':
-            return self.pic_classify(data)
+            X = self.get_pic_tensor(data)
+            result = self.classify(X)
+            return result
 
-    def pic_classify(self, pic_path_list):
+    def get_pic_tensor(self, pic_path_list: list[str]):
         raw = [torchvision.io.read_image(pic_path) for pic_path in pic_path_list]
         if not self.config.is_gray:
-            # [3,width,height] => [1,3,width,height] => [len_pic_list,3,width,height]
+            # [3,height,width] => [1,3,height,width] => [len_pic_list,3,height,width]
             raw = [torch.unsqueeze(item, 0) for item in raw]
             X = torch.cat(raw, 0)
         else:
-            # [1,width,height] => [len_pic_list,width,height] => [len_pic_list,1,width,height]
+            # [1,height,width] => [len_pic_list,height,width] => [len_pic_list,1,height,widtht]
             X = torch.cat(raw, 0)
             X = torch.unsqueeze(X, 1)
+        X = X.to(self.config.device)
+        return X
 
-        self.model.eval()
-        with torch.no_grad():
-            X = X.to(self.config.device)
-            y_hat = self.model(X)
-            y_hat = y_hat.argmax(axis=1)
-
-        result = [self.config.class_list[item] for item in y_hat]
-        return result
-
-    def text_classify(self, sentence_list):
+    def get_sentence_tensor(self, sentence_list: list[str]):
         X = []
         for sentence in sentence_list:
             tokens = self.config.tokenizer.tokenize(sentence)
@@ -685,15 +720,17 @@ class ModelManager:
                 tokens = tokens[:self.config.text_length]
             indexes = [self.config.vocab.to_index(token) for token in tokens]
             X.append(indexes)
+        return torch.tensor(X, device=self.config.device)
 
+    def classify(self, X: torch.Tensor):
         self.model.eval()
         with torch.no_grad():
-            X = torch.tensor(X)
-            X = X.to(self.config.device)
+            if X.device != self.config.device:
+                X = X.to(self.config.device)
             y_hat = self.model(X)
             y_hat = y_hat.argmax(axis=1)
 
-        result = [self.config.class_list[item] for item in y_hat]
+        result = [self.config.class_list[value.item()] for value in y_hat]
         return result
 
     def load_model(self):
@@ -843,6 +880,7 @@ class TextClassifyTrainer:
         test_acc = metric[0] / metric[1]
         self.animator.test_line_append(self.epoch, {"test_acc": test_acc})
         return self
+
 
 class PicClassifyTrainer:
     def __init__(self, config: PicClassifyConfig, model):

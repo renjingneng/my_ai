@@ -12,32 +12,30 @@ from my_ai.pipeline import PreprocessorFactory
 from my_ai.pipeline import ModelManager
 from my_ai.pipeline import TrainerFactory
 import my_ai.utility as utility
-import my_ai.pipeline
+import my_ai.pipeline as pipeline
 
 
 def train_textCNN():
     # step1.input
-    params, other_params = utility.get_params('data/text_classify/config.ini')
     logging.basicConfig(level=logging.DEBUG, format='%(levelname)s-%(asctime)s-%(message)s')
     # step2.conf
-    conf = ConfigFactory.get_config(params, other_params)
-    preprocessor = PreprocessorFactory.get_preprocessor(conf)
+    conf: pipeline.TextClassifyConfig = ConfigFactory.get_config('data/text_classify/config.ini')
+    preprocessor: pipeline.TextClassifyPreprocessor = PreprocessorFactory.get_preprocessor(conf)
     preprocessor.preprocess()
     # step3.model
     model_manager = ModelManager(conf)
     model = model_manager.get_model()
     # step4.train
-    trainer = TrainerFactory.get_trainer(conf, model)
+    trainer: pipeline.TextClassifyTrainer = TrainerFactory.get_trainer(conf, model)
     trainer.start()  # 88.69%
 
 
 def predict_textCNN():
     # step1.input
-    params, other_params = utility.get_params('data/text_classify/config.ini')
     logging.basicConfig(level=logging.DEBUG, format='%(levelname)s-%(asctime)s-%(message)s')
     # step2.conf
-    conf = ConfigFactory.get_config(params, other_params)
-    preprocessor = PreprocessorFactory.get_preprocessor(conf)
+    conf: pipeline.TextClassifyConfig = ConfigFactory.get_config('data/text_classify/config.ini')
+    preprocessor: pipeline.TextClassifyPreprocessor = PreprocessorFactory.get_preprocessor(conf)
     preprocessor.preprocess()
     # step3.model
     model_manager = ModelManager(conf)
@@ -50,54 +48,43 @@ def predict_textCNN():
 
 def train_leNet():
     # step1.input
-    params, other_params = utility.get_params('data/pic_classify/config.ini')
     logging.basicConfig(level=logging.INFO, format='%(levelname)s-%(asctime)s-%(message)s')
     # step2.conf
-    conf: my_ai.pipeline.PicClassifyConfig = ConfigFactory.get_config(params, other_params)
+    conf: pipeline.PicClassifyConfig = ConfigFactory.get_config('data/pic_classify/config.ini')
     # conf.show()
-    preprocessor: my_ai.pipeline.PicClassifyPreprocessor = PreprocessorFactory.get_preprocessor(conf)
+    preprocessor: pipeline.PicClassifyPreprocessor = PreprocessorFactory.get_preprocessor(conf)
     preprocessor.preprocess()
     # step3.model
     model_manager = ModelManager(conf)
     model = model_manager.get_model()
     # utility.summary_of_network(model,[4,1,30,30])
     # step4.train
-    trainer = TrainerFactory.get_trainer(conf, model)
+    trainer: pipeline.PicClassifyTrainer = TrainerFactory.get_trainer(conf, model)
     trainer.start()
+
 
 def predict_leNet():
     # step1.input
-    params, other_params = utility.get_params('data/pic_classify/config.ini')
     logging.basicConfig(level=logging.INFO, format='%(levelname)s-%(asctime)s-%(message)s')
     # step2.conf
-    conf: my_ai.pipeline.PicClassifyConfig = ConfigFactory.get_config(params, other_params)
+    conf: pipeline.PicClassifyConfig = ConfigFactory.get_config('data/pic_classify/config.ini')
     # conf.show()
-    preprocessor: my_ai.pipeline.PicClassifyPreprocessor = PreprocessorFactory.get_preprocessor(conf)
+    preprocessor: pipeline.PicClassifyPreprocessor = PreprocessorFactory.get_preprocessor(conf)
     preprocessor.preprocess()
     # step3.model
     model_manager = ModelManager(conf)
     # ste4.inference
     model_manager.load_model()
-    img_list = [conf.example_path]
+    img_list = ['data/pic_classify/example.png']
     result = model_manager.infer(img_list)
     print(result)
+
 
 def run():
     # train_textCNN()
     # predict_textCNN()
-    # train_leNet()
-    # import torchvision.io
-    # image_int = torchvision.io.read_image('data/pic_classify/example.png')
-    # image_int2 = torchvision.io.read_image('data/pic_classify/example.png')
-    # print(image_int.shape)
-    # print(image_int2.shape)
-    # img_all = torch.cat([image_int,image_int2],0)
-    # print(torch.unsqueeze(img_all,1).shape)
-    temp = ['dd','ff']
-    print('gg' in temp)
-    print('ff' in temp)
-
-
+    train_leNet()
+    # predict_leNet()
 
 
 if __name__ == '__main__':
