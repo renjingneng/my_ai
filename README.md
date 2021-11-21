@@ -11,6 +11,7 @@ A easy and general DL framework based on pytorch.
 - [ ] trainer can begin train at specific batch
 - [ ] order of samples loaded from a train dataset batch can be random,each epoch has different order
 - [ ] offer train option on distributed GPU
+- [ ] use inheritance to optimize code structure
 
 ### model roadmap
 

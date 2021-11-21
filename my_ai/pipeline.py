@@ -1,5 +1,5 @@
 import math
-import sys
+import csv
 import logging
 import pprint
 import os
@@ -109,6 +109,7 @@ class PicClassifyConfig:
             'model_name': model_name,
             'files_path': files_path,
             'device': torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
+            'is_gray': True,
             'num_epochs': 5,
             'batch_size': 128,
             'learning_rate': 0.003,
@@ -121,7 +122,6 @@ class PicClassifyConfig:
     def __init__(self, params: dict, other_params: dict):
         # files path
         self.files_path = params['files_path']
-        self.example_path = params['files_path'] + '/example.jpg'
         self.class_path = params['files_path'] + '/class.txt'
         self.train_img_dir = params['files_path'] + '/train'
         self.dev_img_dir = params['files_path'] + '/dev'
@@ -134,6 +134,7 @@ class PicClassifyConfig:
         # basic info
         self.model_name = params['model_name']
         self.device = params['device']
+        self.is_gray = params['is_gray']
         self.num_epochs = params['num_epochs']
         self.batch_size = params['batch_size']
         self.learning_rate = params['learning_rate']
@@ -273,16 +274,41 @@ class TextClassifyPreprocessor:
 
 
 class PicClassifyPreprocessor:
-
+    """ok
+    """
     def __init__(self, config: PicClassifyConfig):
         self.config = config
 
     def preprocess(self):
+        # auto generate annotation.csv
+        if not os.path.isfile(self.config.train_annotation_path):
+            self._generate_annotation(self.config.train_annotation_path)
+        if not os.path.isfile(self.config.dev_annotation_path):
+            self._generate_annotation(self.config.dev_annotation_path)
+        if not os.path.isfile(self.config.test_annotation_path):
+            self._generate_annotation(self.config.test_annotation_path)
         # dataloader
         logging.info('--Begin  dataloader.')
         self.config.train_dataloader, self.config.dev_dataloader, self.config.test_dataloader = self._get_dataloader()
         logging.info('--Finished  dataloader.')
         return self
+
+    def _generate_annotation(self, path: str):
+        logging.info('--Begin generating annotation file:' + path)
+        header = ['pic', 'class']
+        with open(path, "w", encoding='utf8', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(header)
+            dirname = os.path.dirname(path)
+            for this_class in range(self.config.num_classes):
+                this_class = str(this_class)
+                img_dir = os.path.join(dirname, this_class)
+                img_list = os.listdir(img_dir)
+                rows = []
+                for img in img_list:
+                    rows.append([os.path.join(this_class, img), this_class])
+                writer.writerows(rows)
+        logging.info('--Finished generating annotation file:' + path)
 
     def _get_dataloader(self):
         train_dataset = PicClassifyDataset(self.config.train_annotation_path, self.config.train_img_dir)
@@ -291,7 +317,7 @@ class PicClassifyPreprocessor:
         dev_dataloader = TorchDataLoader(dev_dataset, batch_size=self.config.batch_size)
         test_dataset = PicClassifyDataset(self.config.test_annotation_path, self.config.test_img_dir)
         test_dataloader = TorchDataLoader(test_dataset, batch_size=self.config.batch_size)
-        return iter(train_dataloader), iter(dev_dataloader), iter(test_dataloader)
+        return train_dataloader, dev_dataloader, test_dataloader
 
 
 class PreprocessorFactory:
@@ -299,7 +325,8 @@ class PreprocessorFactory:
     """
 
     @staticmethod
-    def get_preprocessor(config: Union[TextClassifyConfig, PicClassifyConfig]) -> Union[TextClassifyPreprocessor, PicClassifyPreprocessor]:
+    def get_preprocessor(config: Union[TextClassifyConfig, PicClassifyConfig]) -> Union[
+        TextClassifyPreprocessor, PicClassifyPreprocessor]:
         if config.model_name == 'TextCNN':
             preprocessor = TextClassifyPreprocessor(config)
         elif config.model_name == 'LeNet':
@@ -506,6 +533,7 @@ class TextClassifyDataset:
         return [self.vocab.to_index(token) for token in tokens], int(label)
 
     def reset(self):
+        # TODO remove this function ,just use __iter__ instead
         self.file_iterator = self._get_file_iterator()
         return self
 
@@ -590,7 +618,7 @@ class ModelManager:
     """ok
     """
 
-    def __init__(self, config):
+    def __init__(self, config:Union[PicClassifyConfig,TextClassifyConfig]):
         self.model = None
         self.model_type = None
         self.config = config
@@ -606,6 +634,10 @@ class ModelManager:
                                config.is_pretrained:{self.config.is_pretrained}\
                             ')
             self.model = my_ai.model.text_classify.TextCNN(self.config)
+        elif self.config.model_name == 'LeNet':
+            self.model_type = 'pic_classify'
+            import my_ai.model.pic_classify
+            self.model = my_ai.model.pic_classify.LeNet()
         else:
             raise Exception("unrecognized model_name!")
         logging.info('--Finished  model.')
@@ -617,8 +649,31 @@ class ModelManager:
         return self.config.model_name
 
     def infer(self, data):
+        classify_list = ['text_classify','pic_classify']
         if self.model_type == 'text_classify':
             return self.text_classify(data)
+        elif self.model_type == 'pic_classify':
+            return self.pic_classify(data)
+
+    def pic_classify(self, pic_path_list):
+        raw = [torchvision.io.read_image(pic_path) for pic_path in pic_path_list]
+        if not self.config.is_gray:
+            # [3,width,height] => [1,3,width,height] => [len_pic_list,3,width,height]
+            raw = [torch.unsqueeze(item, 0) for item in raw]
+            X = torch.cat(raw, 0)
+        else:
+            # [1,width,height] => [len_pic_list,width,height] => [len_pic_list,1,width,height]
+            X = torch.cat(raw, 0)
+            X = torch.unsqueeze(X, 1)
+
+        self.model.eval()
+        with torch.no_grad():
+            X = X.to(self.config.device)
+            y_hat = self.model(X)
+            y_hat = y_hat.argmax(axis=1)
+
+        result = [self.config.class_list[item] for item in y_hat]
+        return result
 
     def text_classify(self, sentence_list):
         X = []
@@ -637,7 +692,9 @@ class ModelManager:
             X = X.to(self.config.device)
             y_hat = self.model(X)
             y_hat = y_hat.argmax(axis=1)
-        return y_hat
+
+        result = [self.config.class_list[item] for item in y_hat]
+        return result
 
     def load_model(self):
         self.model.load_state_dict(torch.load(self.config.model_save_path))
@@ -656,11 +713,16 @@ class TrainerFactory:
         logging.info('--Begin  trainer.')
         logging.debug(f'\r\n\
                    config.num_epochs:{config.num_epochs}\r\n\
+                   config.batch_size:{config.batch_size}\r\n\
+                   config.learning_rate:{config.learning_rate}\r\n\
                    config.count_expire_from:{config.count_expire_from}\r\n\
+                   config.expire_points:{config.expire_points}\r\n\
                    config.checkpoint_interval:{config.checkpoint_interval}\
                 ')
         if config.model_name == 'TextCNN':
             trainer = TextClassifyTrainer(config, model)
+        elif config.model_name == 'LeNet':
+            trainer = PicClassifyTrainer(config, model)
         else:
             raise Exception("unrecognized model_name!")
         logging.info('--Finished  trainer.')
@@ -770,6 +832,118 @@ class TextClassifyTrainer:
 
     def evaluate(self):
         self.config.test_dataloader.reset()
+        metric = my_ai.utility.Accumulator(2)  # No. of correct predictions, no. of predictions
+        self.model.eval()
+        with torch.no_grad():
+            for X, y in self.config.test_dataloader:
+                X, y = torch.tensor(X), torch.tensor(y)
+                X, y = X.to(self.config.device), y.to(self.config.device)
+                y_hat = self.model(X)
+                metric.add(my_ai.utility.accuracy(y_hat, y), y.numel())
+        test_acc = metric[0] / metric[1]
+        self.animator.test_line_append(self.epoch, {"test_acc": test_acc})
+        return self
+
+class PicClassifyTrainer:
+    def __init__(self, config: PicClassifyConfig, model):
+        """ok
+        """
+        # essential components
+        self.config = config
+        self.model = model
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config.learning_rate)
+        self.animator = my_ai.utility.get_animator()
+        self.loss_func = torch.nn.CrossEntropyLoss()
+        # important stats
+        self.num_batches = len(self.config.train_dataloader)
+        self.dev_best_loss = float('inf')
+        self.last_improve_point = -1
+        self.now_point = -1
+        self.is_expire = False
+        self.epoch = -1
+
+    def start(self):
+        self.model.to(self.config.device)
+        self.animator.prepare(self.num_batches)
+
+        for _ in range(self.config.num_epochs):
+            self.epoch = self.epoch + 1
+            # train
+            is_continue = self.train()
+            if not is_continue:
+                break
+            # evaluate
+            self.evaluate()
+
+    def train(self):
+        metric = my_ai.utility.Accumulator(3)  # Sum of training loss, sum of training accuracy, no. of examples
+        self.model.train()
+
+        for i, (X, y) in enumerate(self.config.train_dataloader):
+            # forward backward
+            self.optimizer.zero_grad()
+            X, y = torch.tensor(X), torch.tensor(y)
+            X, y = X.to(self.config.device), y.to(self.config.device)
+            y_hat = self.model(X)
+            l = self.loss_func(y_hat, y)
+            l.backward()
+            self.optimizer.step()
+            # checkpoint
+            if i != 0 and i % self.config.checkpoint_interval == 0:
+                self.now_point = self.now_point + 1
+                self.checkpoint()
+            # recording stats
+            """first get a new tensor detached from computation graph but still has same underlying storage ,
+            so after we need clone a new one
+            """
+            y_hat_clone = y_hat.detach().clone()
+            y_clone = y.detach().clone()
+            metric.add(l.item() * X.shape[0], my_ai.utility.accuracy(y_hat_clone, y_clone), X.shape[0])
+            train_l = metric[0] / metric[2]
+            train_acc = metric[1] / metric[2]
+            self.animator.train_line_append(self.epoch, i, {"train_l": train_l, "train_acc": train_acc})
+            # condition for early stop
+            if self.epoch >= self.config.count_expire_from and self.is_expire:
+                self.log_action('Early stop')
+                return False
+
+        return True
+
+    def checkpoint(self):
+        dev_loss = self.get_dev_loss()
+        if dev_loss < self.dev_best_loss:
+            self.save_model()
+            self.last_improve_point = self.now_point
+            self.dev_best_loss = dev_loss
+        else:
+            if (self.now_point - self.last_improve_point) >= self.config.expire_points:
+                self.is_expire = True
+        return self
+
+    def save_model(self):
+        self.log_action('Save model')
+        torch.save(self.model.state_dict(), self.config.model_save_path)
+        return self
+
+    def log_action(self, action: str):
+        action_statement = 'epoch:{} , now_point:{} ,action:{} '.format(self.epoch, self.now_point, action)
+        logging.info(action_statement)
+        return self
+
+    def get_dev_loss(self):
+        metric = my_ai.utility.Accumulator(2)  # sum of   loss,number of examples
+        self.model.eval()
+        with torch.no_grad():
+            for X, y in self.config.dev_dataloader:
+                X, y = torch.tensor(X), torch.tensor(y)
+                X, y = X.to(self.config.device), y.to(self.config.device)
+                y_hat = self.model(X)
+                l = self.loss_func(y_hat, y)  # average   loss of this batch
+                metric.add(l.item() * X.shape[0], X.shape[0])
+        dev_loss = metric[0] / metric[1]
+        return dev_loss
+
+    def evaluate(self):
         metric = my_ai.utility.Accumulator(2)  # No. of correct predictions, no. of predictions
         self.model.eval()
         with torch.no_grad():

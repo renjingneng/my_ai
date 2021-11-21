@@ -6,7 +6,7 @@ import my_ai.model
 
 
 class LeNet(torch.nn.Module):
-    """
+    """ok
     """
 
     def __init__(self):
@@ -15,7 +15,7 @@ class LeNet(torch.nn.Module):
                                      nn.MaxPool2d(kernel_size=2, stride=2),
                                      nn.Conv2d(6, 16, kernel_size=5), nn.ReLU(),
                                      nn.MaxPool2d(kernel_size=2, stride=2), nn.Flatten(),
-                                     nn.Linear(16 * 5 * 5, 120), nn.ReLU(),
+                                     nn.Linear(400, 120), nn.ReLU(),
                                      nn.Linear(120, 84), nn.ReLU(), nn.Linear(84, 10))
 
     def forward(self, x):
