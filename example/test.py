@@ -75,7 +75,6 @@ def predict_leNet():
     model_manager.load_model()
     # img_list = ['data/pic_classify/test2.png','data/pic_classify/test4.png','data/pic_classify/test6.png','data/pic_classify/test7.png']
     img_list = [
-                'data/pic_classify/example/example0.jpg',
                 'data/pic_classify/example/example1.jpg',
                 'data/pic_classify/example/example2.jpg',
                 'data/pic_classify/example/example3.jpg',
