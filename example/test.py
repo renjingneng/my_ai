@@ -57,7 +57,7 @@ def train_leNet():
     # step3.model
     model_manager = ModelManager(conf)
     model = model_manager.get_model()
-    # utility.summary_of_network(model,[4,1,30,30])
+    # utility.summary_of_network(model,[4,1,28,28])
     # step4.train
     trainer: pipeline.PicClassifyTrainer = TrainerFactory.get_trainer(conf, model)
     trainer.start()
@@ -69,13 +69,12 @@ def predict_leNet():
     # step2.conf
     conf: pipeline.PicClassifyConfig = ConfigFactory.get_config('data/pic_classify/config.ini')
     # conf.show()
-    preprocessor: pipeline.PicClassifyPreprocessor = PreprocessorFactory.get_preprocessor(conf)
-    preprocessor.preprocess()
     # step3.model
     model_manager = ModelManager(conf)
     # ste4.inference
     model_manager.load_model()
-    img_list = ['data/pic_classify/example.png']
+    # img_list = ['data/pic_classify/test2.png','data/pic_classify/test4.png','data/pic_classify/test6.png','data/pic_classify/test7.png']
+    img_list = ['data/pic_classify/example3.png','data/pic_classify/example4.png','data/pic_classify/example6.png','data/pic_classify/example7.png']
     result = model_manager.infer(img_list)
     print(result)
 
@@ -83,8 +82,8 @@ def predict_leNet():
 def run():
     # train_textCNN()
     # predict_textCNN()
-    train_leNet()
-    # predict_leNet()
+    # train_leNet()
+    predict_leNet()
 
 
 if __name__ == '__main__':

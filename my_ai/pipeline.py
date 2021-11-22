@@ -121,7 +121,7 @@ class PicClassifyConfig:
         }
         if model_name == 'LeNet':
             params['is_gray'] = True
-            params['input_size'] = (30, 30)
+            params['input_size'] = (28, 28)
 
         return params
 
@@ -357,15 +357,15 @@ class PicClassifyPreprocessor:
     def _get_dataloader(self):
         train_dataset = PicClassifyDataset(self.config.train_annotation_path, self.config.train_img_dir,
                                            self.config.input_size)
-        train_dataloader = TorchDataLoader(train_dataset, batch_size=self.config.batch_size)
+        train_dataloader = TorchDataLoader(train_dataset, batch_size=self.config.batch_size, shuffle=True)
 
         dev_dataset = PicClassifyDataset(self.config.dev_annotation_path, self.config.dev_img_dir,
                                          self.config.input_size)
-        dev_dataloader = TorchDataLoader(dev_dataset, batch_size=self.config.batch_size)
+        dev_dataloader = TorchDataLoader(dev_dataset, batch_size=self.config.batch_size, shuffle=True)
 
         test_dataset = PicClassifyDataset(self.config.test_annotation_path, self.config.test_img_dir,
                                           self.config.input_size)
-        test_dataloader = TorchDataLoader(test_dataset, batch_size=self.config.batch_size)
+        test_dataloader = TorchDataLoader(test_dataset, batch_size=self.config.batch_size, shuffle=True)
 
         return train_dataloader, dev_dataloader, test_dataloader
 
@@ -686,6 +686,7 @@ class ModelManager:
             self.model = my_ai.model.pic_classify.LeNet()
         else:
             raise Exception("unrecognized model_name!")
+        self.model.to(self.config.device)
         logging.info('--Finished  model.')
 
     def get_model(self):
@@ -695,7 +696,6 @@ class ModelManager:
         return self.config.model_name
 
     def infer(self, data: list[str]):
-        self.model.to(self.config.device)
         if self.model_type == 'text_classify':
             X = self.get_sentence_tensor(data)
             result = self.classify(X)
@@ -706,7 +706,14 @@ class ModelManager:
             return result
 
     def get_pic_tensor(self, pic_path_list: list[str]):
-        raw = [torchvision.io.read_image(pic_path) for pic_path in pic_path_list]
+        raw = []
+        transform_resize = torchvision.transforms.Resize(self.config.input_size)
+        for pic_path in pic_path_list:
+            image_int = torchvision.io.read_image(pic_path)
+            image_int = transform_resize(image_int)
+            image = torch.empty_like(image_int, dtype=torch.float)
+            image = image_int / 255
+            raw.append(image)
         if not self.config.is_gray:
             # [3,height,width] => [1,3,height,width] => [len_pic_list,3,height,width]
             raw = [torch.unsqueeze(item, 0) for item in raw]
@@ -793,7 +800,6 @@ class TextClassifyTrainer:
         self.epoch = -1
 
     def start(self):
-        self.model.to(self.config.device)
         self.animator.prepare(self.num_batches)
 
         for _ in range(self.config.num_epochs):
@@ -909,7 +915,6 @@ class PicClassifyTrainer:
         self.epoch = -1
 
     def start(self):
-        self.model.to(self.config.device)
         self.animator.prepare(self.num_batches)
 
         for _ in range(self.config.num_epochs):
@@ -928,7 +933,6 @@ class PicClassifyTrainer:
         for i, (X, y) in enumerate(self.config.train_dataloader):
             # forward backward
             self.optimizer.zero_grad()
-            X, y = torch.tensor(X), torch.tensor(y)
             X, y = X.to(self.config.device), y.to(self.config.device)
             y_hat = self.model(X)
             l = self.loss_func(y_hat, y)
@@ -981,7 +985,6 @@ class PicClassifyTrainer:
         self.model.eval()
         with torch.no_grad():
             for X, y in self.config.dev_dataloader:
-                X, y = torch.tensor(X), torch.tensor(y)
                 X, y = X.to(self.config.device), y.to(self.config.device)
                 y_hat = self.model(X)
                 l = self.loss_func(y_hat, y)  # average   loss of this batch
@@ -994,7 +997,6 @@ class PicClassifyTrainer:
         self.model.eval()
         with torch.no_grad():
             for X, y in self.config.test_dataloader:
-                X, y = torch.tensor(X), torch.tensor(y)
                 X, y = X.to(self.config.device), y.to(self.config.device)
                 y_hat = self.model(X)
                 metric.add(my_ai.utility.accuracy(y_hat, y), y.numel())
