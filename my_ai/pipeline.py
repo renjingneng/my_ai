@@ -111,6 +111,7 @@ class PicClassifyConfig:
             'files_path': files_path,
             'device': torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
             'is_gray': False,
+            'is_reannotate': False,
             'input_size': (100, 100),
             'num_epochs': 5,
             'batch_size': 128,
@@ -141,6 +142,7 @@ class PicClassifyConfig:
         self.model_name = params['model_name']
         self.device = params['device']
         self.is_gray = params['is_gray']
+        self.is_reannotate = params['is_reannotate']
         self.input_size = params['input_size']
         self.num_epochs = params['num_epochs']
         self.batch_size = params['batch_size']
@@ -325,11 +327,11 @@ class PicClassifyPreprocessor:
 
     def preprocess(self):
         # auto generate annotation.csv
-        if not os.path.isfile(self.config.train_annotation_path):
+        if not os.path.isfile(self.config.train_annotation_path) or self.config.is_reannotate:
             self._generate_annotation(self.config.train_annotation_path)
-        if not os.path.isfile(self.config.dev_annotation_path):
+        if not os.path.isfile(self.config.dev_annotation_path) or self.config.is_reannotate:
             self._generate_annotation(self.config.dev_annotation_path)
-        if not os.path.isfile(self.config.test_annotation_path):
+        if not os.path.isfile(self.config.test_annotation_path) or self.config.is_reannotate:
             self._generate_annotation(self.config.test_annotation_path)
         # dataloader
         logging.info('--Begin  dataloader.')

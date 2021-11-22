@@ -74,7 +74,17 @@ def predict_leNet():
     # ste4.inference
     model_manager.load_model()
     # img_list = ['data/pic_classify/test2.png','data/pic_classify/test4.png','data/pic_classify/test6.png','data/pic_classify/test7.png']
-    img_list = ['data/pic_classify/example3.png','data/pic_classify/example4.png','data/pic_classify/example6.png','data/pic_classify/example7.png']
+    img_list = [
+                'data/pic_classify/example/example0.jpg',
+                'data/pic_classify/example/example1.jpg',
+                'data/pic_classify/example/example2.jpg',
+                'data/pic_classify/example/example3.jpg',
+                'data/pic_classify/example/example4.jpg',
+                'data/pic_classify/example/example6.jpg',
+                'data/pic_classify/example/example7.jpg',
+                'data/pic_classify/example/example8.jpg',
+                'data/pic_classify/example/example9.jpg',
+                ]
     result = model_manager.infer(img_list)
     print(result)
 
@@ -83,7 +93,7 @@ def run():
     # train_textCNN()
     # predict_textCNN()
     # train_leNet()
-    predict_leNet()
+     predict_leNet()
 
 
 if __name__ == '__main__':
