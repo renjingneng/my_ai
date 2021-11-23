@@ -73,7 +73,6 @@ def predict_leNet():
     model_manager = ModelManager(conf)
     # ste4.inference
     model_manager.load_model()
-    # img_list = ['data/pic_classify/test2.png','data/pic_classify/test4.png','data/pic_classify/test6.png','data/pic_classify/test7.png']
     img_list = [
                 'data/pic_classify/example/example1.jpg',
                 'data/pic_classify/example/example2.jpg',
@@ -88,11 +87,27 @@ def predict_leNet():
     print(result)
 
 
+def train_textCNN_word():
+    # step1.input
+    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s-%(asctime)s-%(message)s')
+    # step2.conf
+    conf: pipeline.TextClassifyConfig = ConfigFactory.get_config('data/text_classify_word/config.ini')
+    # conf.show()
+    preprocessor: pipeline.TextClassifyPreprocessor = PreprocessorFactory.get_preprocessor(conf)
+    preprocessor.preprocess()
+    # step3.model
+    model_manager = ModelManager(conf)
+    model = model_manager.get_model()
+    # step4.train
+    trainer: pipeline.TextClassifyTrainer = TrainerFactory.get_trainer(conf, model)
+    trainer.start()
+
 def run():
     # train_textCNN()
-    # predict_textCNN()
+    #predict_textCNN()
     # train_leNet()
-     predict_leNet()
+    # predict_leNet()
+    train_textCNN_word()
 
 
 if __name__ == '__main__':

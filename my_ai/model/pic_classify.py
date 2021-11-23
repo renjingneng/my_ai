@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class LeNet(torch.nn.Module):
-    """ok
+    """This is improved version of LeNet
     """
 
     def __init__(self):

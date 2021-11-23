@@ -11,13 +11,14 @@ import torch
 import numpy
 import pandas
 import torchvision.io
+import jieba
 from torch.utils.data import Dataset as TorchDataset
 from torch.utils.data import DataLoader as TorchDataLoader
 
 import my_ai.utility
 
 UKN, PAD = '<ukn>', '<pad>'
-
+jieba.setLogLevel(log_level=logging.INFO)
 """
 different types and related models:
 text_classify - TextCNN
@@ -406,7 +407,8 @@ class Tokenizer:
         return result
 
     def tokenize_by_word(self, text: str) -> list:
-        result = text.split(' ')
+        seg_list = jieba.cut(text)
+        result = list(seg_list)
         return result
 
 
