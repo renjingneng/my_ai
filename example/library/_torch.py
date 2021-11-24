@@ -1,5 +1,5 @@
 import torch
-
+import torch.nn as nn
 
 # torch.view vs torch.reshape
 def test1():
@@ -68,9 +68,26 @@ def test5():
     print(result)
 
 
-def run():
-    test5()
+def rnn_test1():
+    rnn = nn.LSTM(4, 5, num_layers=1,bidirectional=True)
+    x = torch.randn(1, 1, 4)
+    h0 = torch.randn(2, 1, 5)
+    c0 = torch.randn(2, 1, 5)
+    y_hat, (hn, cn) = rnn(x, (h0, c0))
+    print(y_hat.shape)
+    print(hn.shape)
+    print(cn.shape)
+
+def rnn_test2():
+    rnn = nn.LSTM(4, 5, num_layers=1,bidirectional=False)
+    x = torch.randn(6, 3, 4)
+    h0 = torch.randn(1, 3, 5)
+    c0 = torch.randn(1, 3, 5)
+    y_hat, (hn, cn) = rnn(x, (h0, c0))
+    print(y_hat.shape)
+    print(hn.shape)
+    print(cn.shape)
 
 
 if __name__ == '__main__':
-    run()
+    test5()

@@ -30,7 +30,7 @@ def train_textCNN():
     trainer.start()  # 88.69%
 
 
-def predict_textCNN():
+def infer_textCNN():
     # step1.input
     logging.basicConfig(level=logging.DEBUG, format='%(levelname)s-%(asctime)s-%(message)s')
     # step2.conf
@@ -63,7 +63,7 @@ def train_leNet():
     trainer.start()
 
 
-def predict_leNet():
+def infer_leNet():
     # step1.input
     logging.basicConfig(level=logging.INFO, format='%(levelname)s-%(asctime)s-%(message)s')
     # step2.conf
@@ -102,12 +102,28 @@ def train_textCNN_word():
     trainer: pipeline.TextClassifyTrainer = TrainerFactory.get_trainer(conf, model)
     trainer.start()
 
+def infer_textCNN_word():
+    # step1.input
+    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s-%(asctime)s-%(message)s')
+    # step2.conf
+    conf: pipeline.TextClassifyConfig = ConfigFactory.get_config('data/text_classify_word/config.ini')
+    preprocessor: pipeline.TextClassifyPreprocessor = PreprocessorFactory.get_preprocessor(conf)
+    preprocessor.preprocess()
+    # step3.model
+    model_manager = ModelManager(conf)
+    # ste4.inference
+    text = ['词汇阅读是关键 08年考研暑期英语复习全指南', '自考经验谈：自考生毕业论文选题技巧', '本科未录取还有这些路可以走']
+    model_manager.load_model()
+    result = model_manager.infer(text)
+    print(result)
+
 def run():
     # train_textCNN()
-    #predict_textCNN()
+    # infer_textCNN()
     # train_leNet()
-    # predict_leNet()
-    train_textCNN_word()
+    # infer_leNet()
+     train_textCNN_word()
+    # infer_textCNN_word()
 
 
 if __name__ == '__main__':

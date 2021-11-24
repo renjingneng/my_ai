@@ -1,17 +1,11 @@
 ### summary
 
-A easy and general DL framework based on pytorch.
+A easy and general DL toolkit based on pytorch.
+一个基于pytorch的简单和通用的深度学习工具集。
 
 ### code style
 
-1. doc style :https://numpydoc.readthedocs.io/en/latest/format.html
-
-### feature roadmap
-
-- [ ] trainer can begin train at specific batch
-- [ ] order of samples loaded from a text train dataset batch can be random,each epoch has different order
-- [ ] offer train option on distributed GPU
-- [ ] use inheritance to optimize code structure
+https://numpydoc.readthedocs.io/en/latest/format.html
 
 ### model roadmap
 
@@ -28,6 +22,6 @@ A easy and general DL framework based on pytorch.
 
 - [ ] bi-lstm-crf
 
-#### picture classify
+#### picture classify(multiple class)
 
-- [ ] alexNet
+- [X] improved LeNet
