@@ -1,177 +1,268 @@
-import re
-import os
-import collections
+import math
+import logging
+from typing import Union
 
+import jieba
+import numpy
 import torch
-from torch.utils import data
+import pickle
 
-"""
-tips:
- embedding:
-    For padding, fill a zero vector embedding .
-    For words that don't have a pre-trained embedding, you should fill them with random values when initializing,
-    but set them to trainable.
-"""
+UKN, PAD = '<ukn>', '<pad>'
+jieba.setLogLevel(log_level=logging.INFO)
 
 
-class WordEmbedding:
-    def __init__(self, embedding_name='glove.6B.50d'):
-        self.data_path = self.get_data_path(embedding_name)
-        self.word_to_vec = {"<zero>": None}
-        self.embedding_len = None
+class Tokenizer:
+    """ok
+    """
 
-        with open(self.data_path, 'r') as f:
-            elems = f.readline().strip().split()
-            self.embedding_len = len(elems[1:])
-            self.word_to_vec["<zero>"] = [0.] * self.embedding_len
+    def __init__(self, is_char_segment: bool):
+        self.is_char_segment = is_char_segment
 
-        with open(self.data_path, 'r') as f:
-            for line in f:
-                elems = line.strip().split()
-                self.word_to_vec[elems[0]] = [float(elem) for elem in elems[1:]]
-
-    def get_data_path(self, embedding_name):
-        if embedding_name == "glove.6B.50d":
-            return "resource/word_vector/glove_en/glove.6B/glove.6B.50d.txt"
-
-    def __getitem__(self, words):
-        if isinstance(words, list):
-            vecs = [
-                self.word_to_vec.get(word, self.word_to_vec["<zero>"])
-                for word in words]
-            return vecs
+    def tokenize(self, text: str) -> list:
+        if self.is_char_segment:
+            return self.tokenize_by_char(text)
         else:
-            return self.word_to_vec.get(words, self.word_to_vec["<zero>"])
+            return self.tokenize_by_word(text)
 
-    def __len__(self):
-        return len(self.word_to_vec)
+    def tokenize_by_char(self, text: str) -> list:
+        result = [char for char in text]
+        return result
+
+    def tokenize_by_word(self, text: str) -> list:
+        seg_list = jieba.cut(text)
+        result = list(seg_list)
+        return result
 
 
 class Vocab:
-    def __init__(self, tokens=[], min_freq=0, reserved_tokens=[]):
-        # format:counter -> Counter({'dd': 2, 'ffff': 1})
-        counter = collections.Counter(tokens)
-        # format:self.token_freqs -> [('dd', 2), ('faff', 1)]
-        self.token_freqs = sorted(counter.items(), key=lambda x: x[1],
-                                  reverse=True)
-        uniq_tokens = []
-        uniq_tokens += reserved_tokens
-        for token, freq in self.token_freqs:
-            if freq >= min_freq:
-                uniq_tokens.append(token)
-        self.idx_to_token, self.token_to_idx = [], dict()
-        for index, token in enumerate(uniq_tokens):
-            self.idx_to_token.append(token)
-            self.token_to_idx[token] = index
+    """ok
+    """
+
+    def __init__(self, train_path: str, vocab_path: str, tokenizer: Tokenizer, min_freq: int = 2):
+        self.train_path = train_path
+        self.vocab_path = vocab_path
+        self.tokenizer = tokenizer
+        self.min_freq = min_freq
+        self.idx_to_token, self.token_to_idx = [PAD, UKN], {PAD: 0, UKN: 1}
+
+    def build_vocab_of_sentences(self):
+        vocab_dic = {}
+        separator = '\t'
+
+        with open(self.train_path, 'r', encoding='UTF-8') as f:
+            for line in f:
+                sentence = line.strip().split(separator)[0]
+                if sentence == '':
+                    continue
+                for word in self.tokenizer.tokenize(sentence):
+                    vocab_dic[word] = vocab_dic.get(word, 0) + 1
+
+        i = 2
+        for key in vocab_dic:
+            if key == PAD or key == UKN:
+                continue
+            if vocab_dic[key] >= self.min_freq:
+                self.idx_to_token.append(key)
+                self.token_to_idx[key] = i
+                i = i + 1
+
+        pickle.dump(self.idx_to_token, open(self.vocab_path, 'wb'))
+
+    def load_vocab(self):
+        self.idx_to_token = pickle.load(open(self.vocab_path, 'rb'))
+        self.token_to_idx = {}
+        for idx, token in enumerate(self.idx_to_token):
+            self.token_to_idx[token] = idx
+
+    def get_len(self) -> int:
+        return len(self.idx_to_token)
+
+    def to_token(self, index: int) -> str:
+        if index < 0 or (index + 1) > self.get_len():
+            return None
+        return self.idx_to_token[index]
+
+    def to_index(self, token: str) -> int:
+        return self.token_to_idx.get(token, 1)  # if token  not found ,consider it as unknown
 
     def __len__(self):
         return len(self.idx_to_token)
 
-    def __getitem__(self, tokens):
-        if isinstance(tokens, (list, tuple)):
-            return [self.token_to_idx.get(token, 0) for token in tokens]
+
+class Embedding:
+    """ok
+    """
+
+    def __init__(self, trimmed_path: str, original_path: str, vocab: Vocab):
+        self.original_path = original_path
+        self.trimmed_path = trimmed_path
+        self.vocab = vocab
+        self.representation = None  # array  of trimmed Embedding (num of  vocab ,len of Embedding for one token)
+        self.len = None  # len of Embedding for one token
+        self.residual_index = []  # token index which is not found in original pretrained Embedding
+        # [PAD, UKN]
+        self.special_index = [0, 1]
+
+    def build_trimmed(self):
+        original_has_header = True
+        # embedding_len
+        with open(self.original_path, 'r', encoding='UTF-8') as f:
+            if original_has_header:
+                f.readline()
+            elems = f.readline().strip().split()
+            self.len = len(elems[1:])
+        # representation of embedding
+        self.representation = numpy.zeros(shape=(self.vocab.get_len(), self.len))
+
+        with open(self.original_path, 'r', encoding='UTF-8') as f:
+            if original_has_header:
+                f.readline()
+            for line in f:
+                elems = line.strip().split()
+                # if original embedding has PAD or UKN ,just abandon it bc it may has diff meaning
+                if elems[0] == PAD or elems[0] == UKN:
+                    continue
+                vocab_index = self.vocab.to_index(elems[0])
+                if vocab_index is None:
+                    continue
+                self.representation[vocab_index, 0:] = elems[1:]
+
+        zero = numpy.zeros(self.len)
+        for vocab_index in range(self.vocab.get_len()):
+            if vocab_index == 0:
+                self.representation[vocab_index] = self._get_pad_embedding()
+            elif vocab_index == 1:
+                self.representation[vocab_index] = self._get_ukn_embedding()
+            else:
+                if (self.representation[vocab_index] == zero).all():
+                    self.representation[vocab_index] = self._get_residual_embedding()
+                    self.residual_index.append(vocab_index)
+
+        numpy.savez_compressed(self.trimmed_path, representation=self.representation,
+                               residual_index=self.residual_index)
+
+    def load_trimmed(self):
+        trimmed = numpy.load(self.trimmed_path)
+        self.representation = trimmed['representation']
+        self.residual_index = trimmed['residual_index']
+        self.len = self.representation.shape[1]
+
+    def get_representation_by_index(self, index: int):
+        return self.representation[index]
+
+    def get_all_representation(self) -> numpy.ndarray:
+        return self.representation
+
+    def get_residual_index(self) -> list:
+        return self.residual_index
+
+    def get_residual_index_token(self):
+        return [(index, self.vocab.to_token(index)) for index in self.residual_index]
+
+    def _get_pad_embedding(self):
+        result = numpy.random.rand(self.len)
+        return result
+
+    def _get_ukn_embedding(self):
+        result = numpy.random.rand(self.len)
+        return result
+
+    def _get_residual_embedding(self):
+        result = numpy.random.rand(self.len)
+        return result
+
+
+class TextClassifyDataset:
+    """ok
+    """
+
+    def __init__(self, file_path: str, text_length: str, vocab: Vocab, tokenizer: Tokenizer):
+        self.file_path = file_path
+        self.text_length = text_length
+        self.vocab = vocab
+        self.tokenizer = tokenizer
+        self.file_iterator = None
+
+    def __iter__(self):
+        self.reset()
+        return self
+
+    def __len__(self):
+        length = 0
+        with open(self.file_path, 'r', encoding='UTF-8') as file:
+            while True:
+                line = file.readline().strip()
+                if line == '':
+                    break
+                else:
+                    length = length + 1
+        return length
+
+    def __next__(self):
+        separator = '\t'
+        line = next(self.file_iterator)
+        sentence, label = line.split(separator)
+        tokens = self.tokenizer.tokenize(sentence)
+        if len(tokens) < self.text_length:
+            tokens.extend([PAD] * (self.text_length - len(tokens)))
         else:
-            return self.token_to_idx.get(tokens, 0)
+            tokens = tokens[:self.text_length]
+        return [self.vocab.to_index(token) for token in tokens], int(label)
 
-    def to_tokens(self, indices):
-        if isinstance(indices, (list, tuple)):
-            return [self.idx_to_token[index] for index in indices]
+    def reset(self):
+        self.file_iterator = self._get_file_iterator()
+        return self
+
+    def _get_file_iterator(self):
+        with open(self.file_path, 'r', encoding='UTF-8') as file:
+            while True:
+                line = file.readline().strip()
+                if line == '':
+                    break
+                else:
+                    yield line
+
+
+class Dataloader:
+    """ok
+    """
+
+    def __init__(self, dataset_iterator: Union[TextClassifyDataset], batch_size: int):
+        self.dataset_iterator = dataset_iterator
+        self.batch_size = batch_size
+
+    def __iter__(self):
+        self.dataset_iterator.reset()
+        return self
+
+    def __len__(self):
+        length = len(self.dataset_iterator)
+        return math.ceil(length / self.batch_size)
+
+    def __next__(self):
+        i = 0
+        X_list = []
+        Y_list = []
+        while True:
+            try:
+                X, Y = next(self.dataset_iterator)
+            except StopIteration:
+                break
+            else:
+                X_list.append(X)
+                Y_list.append(Y)
+                i = i + 1
+                if i == self.batch_size:
+                    break
+
+        if len(X_list) == 0:
+            raise StopIteration
         else:
-            return self.idx_to_token[indices]
+            return torch.tensor(X_list), torch.tensor(Y_list)
 
 
-class DatasetFactory(object):
-    @staticmethod
-    def get_dataset(name):
-        if name == "aclImdb":
-            return DatasetAclImdb()
-        elif name == "中文语料库-分类":
-            return DatasetTestCh()
-
-
-class DatasetClassification(object):
-    def read_data(self, data_dir, is_train):
-        data, labels, label_map = [], [], {}
-        data_folder = os.path.join(data_dir, 'train' if is_train else 'test')
-        for index, label in enumerate(os.listdir(data_folder)):
-            label_map[index] = label
-            label_folder = os.path.join(data_folder,
-                                        label)
-            for file in os.listdir(label_folder):
-                with open(os.path.join(label_folder, file), 'rb') as f:
-                    for line in f:
-                        line = line.decode('utf-8')
-                        if line.strip() == "":
-                            continue
-                        line = self.line_preprocess(line)
-                        data.append(self.line_tokenize(line))
-                        labels.append(index)
-        return data, labels, label_map
-
-    def truncate_pad(self, line, num_steps, padding_token):
-        if len(line) > num_steps:
-            return line[:num_steps]  # Truncate
-        return line + [padding_token] * (num_steps - len(line))  # Pad
-
-    def line_preprocess(self):
-        raise NotImplementedError
-
-    def line_tokenize(self):
-        raise NotImplementedError
-
-    def token_preprocess(self):
-        raise NotImplementedError
-
-
-class DatasetClassificationEn(DatasetClassification):
-    def line_preprocess(self, line):
-        line = re.sub('[^A-Za-z]+', ' ', line).strip().replace('\n', '').lower()
-        return line
-
-    def line_tokenize(self, line):
-        tokens = line.split()
-        res = []
-        for token in tokens:
-            token = self.token_preprocess(token)
-            if token:
-                res.append(token)
-        return res
-
-    def token_preprocess(self, token):
-        if len(token) == 1 and token != "a":
-            token = None
-        return token
-
-
-class DatasetClassificationCh(DatasetClassification):
-    pass
-
-
-class DatasetAclImdb(DatasetClassificationEn):
-
-    def __init__(self, num_steps=10, batch_size=24):
-        self.vocab = None
-        self.train_iter = None
-        self.test_iter = None
-
-        data_path = f"resource/dataset/text/aclImdb"
-        train_data = self.read_data(data_path, True)
-        test_data = self.read_data(data_path, False)
-        train_tokens = []
-        for example in train_data[0]:
-            train_tokens += example
-        self.vocab = Vocab(train_tokens, 5, ["<pad>", "<ukn>"])
-        train_features = torch.tensor([
-            self.truncate_pad(self.vocab[example], num_steps, self.vocab['<pad>'])
-            for example in train_data[0]])
-        test_features = torch.tensor([
-            self.truncate_pad(self.vocab[example], num_steps, self.vocab['<pad>'])
-            for example in test_data[0]])
-        self.train_iter = data.DataLoader(data.TensorDataset(train_features, torch.tensor(train_data[1])), batch_size,
-                                          shuffle=True)
-        self.test_iter = data.DataLoader(data.TensorDataset(test_features, torch.tensor(test_data[1])), batch_size,
-                                         shuffle=False)
-
-
-class DatasetTestCh(DatasetClassificationCh):
-    pass
+def get_text_classify_dataloader(file_path, text_length, batch_size, vocab, tokenizer):
+    dataset = TextClassifyDataset(file_path, text_length, vocab,
+                                  tokenizer)
+    dataloader = Dataloader(dataset, batch_size)
+    return dataloader

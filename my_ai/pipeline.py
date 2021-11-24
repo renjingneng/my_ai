@@ -1,24 +1,17 @@
-import math
 import csv
 import logging
 import pprint
 import os
-import pickle
 import configparser
 from typing import Union
 
 import torch
-import numpy
-import pandas
 import torchvision.io
-import jieba
-from torch.utils.data import Dataset as TorchDataset
-from torch.utils.data import DataLoader as TorchDataLoader
 
 import my_ai.utility
+import my_ai.nlp
+import my_ai.vision
 
-UKN, PAD = '<ukn>', '<pad>'
-jieba.setLogLevel(log_level=logging.INFO)
 """
 different types and related models:
 text_classify - TextCNN
@@ -27,8 +20,13 @@ text_entity_extract -
 """
 
 
+class Config:
+    def show(self):
+        pprint.pprint(vars(self))
+
+
 # region Config
-class TextClassifyConfig:
+class TextClassifyConfig(Config):
     """ok
     """
 
@@ -88,20 +86,17 @@ class TextClassifyConfig:
         self.class_list = [x.strip() for x in open(self.class_path, encoding='utf-8').readlines()]
         self.num_classes = len(self.class_list)
 
-        self.tokenizer: Tokenizer = None
-        self.vocab: Vocab = None
-        self.embedding: Embedding = None
-        self.train_dataloader: Dataloader = None
-        self.dev_dataloader: Dataloader = None
-        self.test_dataloader: Dataloader = None
+        self.tokenizer: my_ai.nlp.Tokenizer = None
+        self.vocab: my_ai.nlp.Vocab = None
+        self.embedding: my_ai.nlp.Embedding = None
+        self.train_dataloader = None
+        self.dev_dataloader = None
+        self.test_dataloader = None
         # other_params
-        self.other_params = other_params
-
-    def show(self):
-        pprint.pprint(vars(self))
+        self.other_params: dict = other_params
 
 
-class PicClassifyConfig:
+class PicClassifyConfig(Config):
     """ok
     """
 
@@ -155,14 +150,11 @@ class PicClassifyConfig:
         self.class_list = [x.strip() for x in open(self.class_path, encoding='utf-8').readlines()]
         self.num_classes = len(self.class_list)
 
-        self.train_dataloader: TorchDataLoader = None
-        self.dev_dataloader: TorchDataLoader = None
-        self.test_dataloader: TorchDataLoader = None
+        self.train_dataloader = None
+        self.dev_dataloader = None
+        self.test_dataloader = None
         # other_params
         self.other_params = other_params
-
-    def show(self):
-        pprint.pprint(vars(self))
 
 
 class ConfigFactory:
@@ -259,7 +251,7 @@ class TextClassifyPreprocessor:
         logging.debug(f'\r\n\
            config.is_char_segment:{self.config.is_char_segment}\
         ')
-        self.config.tokenizer = Tokenizer(self.config.is_char_segment)
+        self.config.tokenizer = my_ai.nlp.Tokenizer(self.config.is_char_segment)
         logging.info('--Finished  tokenizer.')
         # vocab
         logging.info('--Begin  vocab.')
@@ -268,8 +260,8 @@ class TextClassifyPreprocessor:
            config.vocab_path:{self.config.vocab_path}\r\n\
            config.min_freq:{self.config.min_freq}\
         ')
-        self.config.vocab = Vocab(self.config.train_path, self.config.vocab_path, self.config.tokenizer,
-                                  self.config.min_freq)
+        self.config.vocab = my_ai.nlp.Vocab(self.config.train_path, self.config.vocab_path, self.config.tokenizer,
+                                            self.config.min_freq)
         if self.config.is_revocab:
             logging.info('Start building vocab.')
             self.config.vocab.build_vocab_of_sentences()
@@ -284,8 +276,8 @@ class TextClassifyPreprocessor:
                config.trimmed_embed_path:{self.config.trimmed_embed_path}\r\n\
                config.original_embed_path:{self.config.original_embed_path}\
             ')
-            self.config.embedding = Embedding(self.config.trimmed_embed_path, self.config.original_embed_path,
-                                              self.config.vocab)
+            self.config.embedding = my_ai.nlp.Embedding(self.config.trimmed_embed_path, self.config.original_embed_path,
+                                                        self.config.vocab)
             if self.config.is_retrim_embedding:
                 logging.info('Start building pretrained  embedding.')
                 self.config.embedding.build_trimmed()
@@ -302,21 +294,20 @@ class TextClassifyPreprocessor:
            config.batch_size:{self.config.batch_size}\r\n\
            config.text_length:{self.config.text_length}\
         ')
-        self.config.train_dataloader, self.config.dev_dataloader, self.config.test_dataloader = self._get_dataloader()
+        self.config.train_dataloader = my_ai.nlp.get_text_classify_dataloader(self.config.train_path,
+                                                                              self.config.text_length,
+                                                                              self.config.batch_size, self.config.vocab,
+                                                                              self.config.tokenizer)
+        self.config.dev_dataloader = my_ai.nlp.get_text_classify_dataloader(self.config.dev_path,
+                                                                            self.config.text_length,
+                                                                            self.config.batch_size, self.config.vocab,
+                                                                            self.config.tokenizer)
+        self.config.test_dataloader = my_ai.nlp.get_text_classify_dataloader(self.config.test_path,
+                                                                             self.config.text_length,
+                                                                             self.config.batch_size, self.config.vocab,
+                                                                             self.config.tokenizer)
         logging.info('--Finished  dataloader.')
         return self
-
-    def _get_dataloader(self):
-        train_dataset = TextClassifyDataset(self.config.train_path, self.config.text_length, self.config.vocab,
-                                            self.config.tokenizer)
-        train_dataloader = Dataloader(train_dataset, self.config.batch_size)
-        dev_dataset = TextClassifyDataset(self.config.dev_path, self.config.text_length, self.config.vocab,
-                                          self.config.tokenizer)
-        dev_dataloader = Dataloader(dev_dataset, self.config.batch_size)
-        test_dataset = TextClassifyDataset(self.config.test_path, self.config.text_length, self.config.vocab,
-                                           self.config.tokenizer)
-        test_dataloader = Dataloader(test_dataset, self.config.batch_size)
-        return train_dataloader, dev_dataloader, test_dataloader
 
 
 class PicClassifyPreprocessor:
@@ -336,7 +327,17 @@ class PicClassifyPreprocessor:
             self._generate_annotation(self.config.test_annotation_path)
         # dataloader
         logging.info('--Begin  dataloader.')
-        self.config.train_dataloader, self.config.dev_dataloader, self.config.test_dataloader = self._get_dataloader()
+        normalizer = my_ai.vision.Normalizer(self.config.input_size)
+        augmentor = my_ai.vision.Augmentor()
+        self.config.train_dataloader = my_ai.vision.get_pic_classify_dataloader(self.config.train_annotation_path,
+                                                                                self.config.train_img_dir, normalizer,
+                                                                                augmentor)
+        self.config.dev_dataloader = my_ai.vision.get_pic_classify_dataloader(self.config.dev_annotation_path,
+                                                                              self.config.dev_img_dir, normalizer,
+                                                                              augmentor)
+        self.config.test_dataloader = my_ai.vision.get_pic_classify_dataloader(self.config.test_annotation_path,
+                                                                               self.config.test_img_dir, normalizer,
+                                                                               augmentor)
         logging.info('--Finished  dataloader.')
         return self
 
@@ -357,21 +358,6 @@ class PicClassifyPreprocessor:
                 writer.writerows(rows)
         logging.info('--Finished generating annotation file:' + path)
 
-    def _get_dataloader(self):
-        train_dataset = PicClassifyDataset(self.config.train_annotation_path, self.config.train_img_dir,
-                                           self.config.input_size)
-        train_dataloader = TorchDataLoader(train_dataset, batch_size=self.config.batch_size, shuffle=True)
-
-        dev_dataset = PicClassifyDataset(self.config.dev_annotation_path, self.config.dev_img_dir,
-                                         self.config.input_size)
-        dev_dataloader = TorchDataLoader(dev_dataset, batch_size=self.config.batch_size, shuffle=True)
-
-        test_dataset = PicClassifyDataset(self.config.test_annotation_path, self.config.test_img_dir,
-                                          self.config.input_size)
-        test_dataloader = TorchDataLoader(test_dataset, batch_size=self.config.batch_size, shuffle=True)
-
-        return train_dataloader, dev_dataloader, test_dataloader
-
 
 class PreprocessorFactory:
     """ok
@@ -387,278 +373,6 @@ class PreprocessorFactory:
         else:
             raise Exception("unrecognized model_name!")
         return preprocessor
-
-
-class Tokenizer:
-    """ok
-    """
-
-    def __init__(self, is_char_segment: bool):
-        self.is_char_segment = is_char_segment
-
-    def tokenize(self, text: str) -> list:
-        if self.is_char_segment:
-            return self.tokenize_by_char(text)
-        else:
-            return self.tokenize_by_word(text)
-
-    def tokenize_by_char(self, text: str) -> list:
-        result = [char for char in text]
-        return result
-
-    def tokenize_by_word(self, text: str) -> list:
-        seg_list = jieba.cut(text)
-        result = list(seg_list)
-        return result
-
-
-class Vocab:
-    """ok
-    """
-
-    def __init__(self, train_path: str, vocab_path: str, tokenizer: Tokenizer, min_freq: int = 2):
-        self.train_path = train_path
-        self.vocab_path = vocab_path
-        self.tokenizer = tokenizer
-        self.min_freq = min_freq
-        self.idx_to_token, self.token_to_idx = [PAD, UKN], {PAD: 0, UKN: 1}
-
-    def build_vocab_of_sentences(self):
-        vocab_dic = {}
-        separator = '\t'
-
-        with open(self.train_path, 'r', encoding='UTF-8') as f:
-            for line in f:
-                sentence = line.strip().split(separator)[0]
-                if sentence == '':
-                    continue
-                for word in self.tokenizer.tokenize(sentence):
-                    vocab_dic[word] = vocab_dic.get(word, 0) + 1
-
-        i = 2
-        for key in vocab_dic:
-            if key == PAD or key == UKN:
-                continue
-            if vocab_dic[key] >= self.min_freq:
-                self.idx_to_token.append(key)
-                self.token_to_idx[key] = i
-                i = i + 1
-
-        pickle.dump(self.idx_to_token, open(self.vocab_path, 'wb'))
-
-    def load_vocab(self):
-        self.idx_to_token = pickle.load(open(self.vocab_path, 'rb'))
-        self.token_to_idx = {}
-        for idx, token in enumerate(self.idx_to_token):
-            self.token_to_idx[token] = idx
-
-    def get_len(self) -> int:
-        return len(self.idx_to_token)
-
-    def to_token(self, index: int) -> str:
-        if index < 0 or (index + 1) > self.get_len():
-            return None
-        return self.idx_to_token[index]
-
-    def to_index(self, token: str) -> int:
-        return self.token_to_idx.get(token, 1)  # if token  not found ,consider it as unknown
-
-    def __len__(self):
-        return len(self.idx_to_token)
-
-
-class Embedding:
-    """ok
-    """
-
-    def __init__(self, trimmed_path: str, original_path: str, vocab: Vocab):
-        self.original_path = original_path
-        self.trimmed_path = trimmed_path
-        self.vocab = vocab
-        self.representation = None  # array  of trimmed Embedding (num of  vocab ,len of Embedding for one token)
-        self.len = None  # len of Embedding for one token
-        self.residual_index = []  # token index which is not found in original pretrained Embedding
-        # [PAD, UKN]
-        self.special_index = [0, 1]
-
-    def build_trimmed(self):
-        original_has_header = True
-        # embedding_len
-        with open(self.original_path, 'r', encoding='UTF-8') as f:
-            if original_has_header:
-                f.readline()
-            elems = f.readline().strip().split()
-            self.len = len(elems[1:])
-        # representation of embedding
-        self.representation = numpy.zeros(shape=(self.vocab.get_len(), self.len))
-
-        with open(self.original_path, 'r', encoding='UTF-8') as f:
-            if original_has_header:
-                f.readline()
-            for line in f:
-                elems = line.strip().split()
-                # if original embedding has PAD or UKN ,just abandon it bc it may has diff meaning
-                if elems[0] == PAD or elems[0] == UKN:
-                    continue
-                vocab_index = self.vocab.to_index(elems[0])
-                if vocab_index is None:
-                    continue
-                self.representation[vocab_index, 0:] = elems[1:]
-
-        zero = numpy.zeros(self.len)
-        for vocab_index in range(self.vocab.get_len()):
-            if vocab_index == 0:
-                self.representation[vocab_index] = self._get_pad_embedding()
-            elif vocab_index == 1:
-                self.representation[vocab_index] = self._get_ukn_embedding()
-            else:
-                if (self.representation[vocab_index] == zero).all():
-                    self.representation[vocab_index] = self._get_residual_embedding()
-                    self.residual_index.append(vocab_index)
-
-        numpy.savez_compressed(self.trimmed_path, representation=self.representation,
-                               residual_index=self.residual_index)
-
-    def load_trimmed(self):
-        trimmed = numpy.load(self.trimmed_path)
-        self.representation = trimmed['representation']
-        self.residual_index = trimmed['residual_index']
-        self.len = self.representation.shape[1]
-
-    def get_representation_by_index(self, index: int):
-        return self.representation[index]
-
-    def get_all_representation(self) -> numpy.ndarray:
-        return self.representation
-
-    def get_residual_index(self) -> list:
-        return self.residual_index
-
-    def get_residual_index_token(self):
-        return [(index, self.vocab.to_token(index)) for index in self.residual_index]
-
-    def _get_pad_embedding(self):
-        result = numpy.random.rand(self.len)
-        return result
-
-    def _get_ukn_embedding(self):
-        result = numpy.random.rand(self.len)
-        return result
-
-    def _get_residual_embedding(self):
-        result = numpy.random.rand(self.len)
-        return result
-
-
-class TextClassifyDataset:
-    """ok
-    """
-
-    def __init__(self, file_path: str, text_length: str, vocab: Vocab, tokenizer: Tokenizer):
-        self.file_path = file_path
-        self.text_length = text_length
-        self.vocab = vocab
-        self.tokenizer = tokenizer
-        self.file_iterator = self._get_file_iterator()
-
-    def __iter__(self):
-        return self
-
-    def __len__(self):
-        length = 0
-        with open(self.file_path, 'r', encoding='UTF-8') as file:
-            while True:
-                line = file.readline().strip()
-                if line == '':
-                    break
-                else:
-                    length = length + 1
-        return length
-
-    def __next__(self):
-        separator = '\t'
-        line = next(self.file_iterator)
-        sentence, label = line.split(separator)
-        tokens = self.tokenizer.tokenize(sentence)
-        if len(tokens) < self.text_length:
-            tokens.extend([PAD] * (self.text_length - len(tokens)))
-        else:
-            tokens = tokens[:self.text_length]
-        return [self.vocab.to_index(token) for token in tokens], int(label)
-
-    def reset(self):
-        # TODO remove this function ,just use __iter__ instead
-        self.file_iterator = self._get_file_iterator()
-        return self
-
-    def _get_file_iterator(self):
-        with open(self.file_path, 'r', encoding='UTF-8') as file:
-            while True:
-                line = file.readline().strip()
-                if line == '':
-                    break
-                else:
-                    yield line
-
-
-class PicClassifyDataset(TorchDataset):
-    def __init__(self, annotations_file: str, img_dir: str, input_size: tuple):
-        self.img_labels = pandas.read_csv(annotations_file)
-        self.img_dir = img_dir
-        self.transform_resize = torchvision.transforms.Resize(input_size)
-
-    def __len__(self):
-        return len(self.img_labels)
-
-    def __getitem__(self, idx):
-        img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
-        image_int = torchvision.io.read_image(img_path)
-        image_int = self.transform_resize(image_int)
-        image = torch.empty_like(image_int, dtype=torch.float)
-        image = image_int / 255
-        label = self.img_labels.iloc[idx, 1]
-        return image, label
-
-
-class Dataloader:
-    """ok
-    """
-
-    def __init__(self, dataset_iterator: Union[TextClassifyDataset], batch_size: int):
-        self.dataset_iterator = dataset_iterator
-        self.batch_size = batch_size
-
-    def __iter__(self):
-        return self
-
-    def __len__(self):
-        length = len(self.dataset_iterator)
-        return math.ceil(length / self.batch_size)
-
-    def reset(self):
-        self.dataset_iterator.reset()
-        return
-
-    def __next__(self):
-        i = 0
-        X_list = []
-        Y_list = []
-        while True:
-            try:
-                X, Y = next(self.dataset_iterator)
-            except StopIteration:
-                break
-            else:
-                X_list.append(X)
-                Y_list.append(Y)
-                i = i + 1
-                if i == self.batch_size:
-                    break
-
-        if len(X_list) == 0:
-            raise StopIteration
-        else:
-            return X_list, Y_list
 
 
 # endregion
@@ -817,13 +531,11 @@ class TextClassifyTrainer:
 
     def train(self):
         metric = my_ai.utility.Accumulator(3)  # Sum of training loss, sum of training accuracy, no. of examples
-        self.config.train_dataloader.reset()
         self.model.train()
 
         for i, (X, y) in enumerate(self.config.train_dataloader):
             # forward backward
             self.optimizer.zero_grad()
-            X, y = torch.tensor(X), torch.tensor(y)
             X, y = X.to(self.config.device), y.to(self.config.device)
             y_hat = self.model(X)
             l = self.loss_func(y_hat, y)
@@ -872,7 +584,6 @@ class TextClassifyTrainer:
         return self
 
     def get_dev_loss(self):
-        self.config.dev_dataloader.reset()
         metric = my_ai.utility.Accumulator(2)  # sum of   loss,number of examples
         self.model.eval()
         with torch.no_grad():
@@ -886,7 +597,6 @@ class TextClassifyTrainer:
         return dev_loss
 
     def evaluate(self):
-        self.config.test_dataloader.reset()
         metric = my_ai.utility.Accumulator(2)  # No. of correct predictions, no. of predictions
         self.model.eval()
         with torch.no_grad():

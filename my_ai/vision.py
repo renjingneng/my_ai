@@ -1,41 +1,53 @@
-import torchvision
+import os
+
+import pandas
 import torch
-import torch.utils.data
+import torchvision
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 
 
-class LoadDataset:
-    trans = None
+class Normalizer:
 
-    @classmethod
-    def transforms_before_load(cls, resize=None):
-        cls.trans = [torchvision.transforms.ToTensor()]
-        if resize:
-            cls.trans.insert(0, torchvision.transforms.Resize(resize))
-        cls.trans = torchvision.transforms.Compose(cls.trans)
-        return cls.trans
+    def __init__(self, input_size: tuple):
+        self.transform_resize = torchvision.transforms.Resize(input_size)
 
-    @classmethod
-    def load_fashion_mnist(cls, batch_size: int):
-        if not cls.trans:
-            trans = cls.transforms_before_load()
-        else:
-            trans = cls.trans
-        """
-        Download the Fashion-MNIST dataset and then load it into memory.
-        Original dataset uri:https://github.com/zalandoresearch/fashion-mnist/tree/master/data/fashion
-        One bug in torchvision 0.10.0 has been fixed in the latest commit: https://github.com/pytorch/vision/pull/4184
-        :param batch_size:
-        :return:
-        """
-        mnist_train = torchvision.datasets.FashionMNIST(root="res/dataset/img",
-                                                        train=True,
-                                                        transform=trans,
-                                                        download=True)
-        mnist_test = torchvision.datasets.FashionMNIST(root="res/dataset/img",
-                                                       train=False,
-                                                       transform=trans,
-                                                       download=True)
-        return (torch.utils.data.DataLoader(mnist_train, batch_size, shuffle=True,
-                                            num_workers=2),
-                torch.utils.data.DataLoader(mnist_test, batch_size, shuffle=False,
-                                            num_workers=2))
+    def normalize(self, x):
+        y = self.transform_resize(x)
+        return y
+
+
+class Augmentor:
+
+    def __init__(self): pass
+
+    def rand(self, x):
+        # TODO
+        return x
+
+
+class PicClassifyDataset(Dataset):
+    def __init__(self, annotations_file: str, img_dir: str, normalizer: Normalizer, augmentor: Augmentor):
+        self.img_labels = pandas.read_csv(annotations_file)
+        self.img_dir = img_dir
+        self.normalizer = normalizer
+        self.augmentor = augmentor
+
+    def __len__(self):
+        return len(self.img_labels)
+
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
+        image_int = torchvision.io.read_image(img_path)
+        image_int = self.normalizer.normalize(image_int)
+        image_int = self.augmentor.rand(image_int)
+        image = torch.empty_like(image_int, dtype=torch.float)
+        image = image_int / 255
+        label = self.img_labels.iloc[idx, 1]
+        return image, label
+
+
+def get_pic_classify_dataloader(annotation_path, img_dir, batch_size, normalizer: Normalizer, augmentor: Augmentor):
+    dataset = PicClassifyDataset(annotation_path, img_dir, normalizer, augmentor)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    return dataloader
